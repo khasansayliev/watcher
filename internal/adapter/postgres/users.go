@@ -6,8 +6,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/khasansayliev/railbot/internal/domain"
-	"github.com/khasansayliev/railbot/internal/usecase"
+	"github.com/khasansayliev/watcher/internal/domain"
+	"github.com/khasansayliev/watcher/internal/usecase"
 )
 
 type Users struct{ db *sql.DB }

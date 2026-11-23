@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/khasansayliev/railbot/internal/domain"
+	"github.com/khasansayliev/watcher/internal/domain"
 )
 
 const linkCodeTTL = 15 * time.Minute
@@ -78,5 +78,5 @@ func (s *TelegramService) SendTest(ctx context.Context, userID int64) error {
 	if !u.HasTelegram() {
 		return domain.NewValidationError("Telegram ulanmagan")
 	}
-	return s.notifier.SendText(ctx, u.TelegramChatID, "✅ Test xabar: bilet kuzatuvchi ishlayapti.")
+	return s.notifier.SendText(ctx, u.TelegramChatID, "✅ Test xabar: Watcher ishlayapti.")
 }

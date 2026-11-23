@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/khasansayliev/railbot/internal/domain"
-	"github.com/khasansayliev/railbot/internal/usecase"
+	"github.com/khasansayliev/watcher/internal/domain"
+	"github.com/khasansayliev/watcher/internal/usecase"
 )
 
 // Fake portlar: usecase'lar tarmoqsiz va bazasiz, to'liq izolyatsiyada tekshiriladi.

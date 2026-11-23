@@ -9,8 +9,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/khasansayliev/railbot/internal/domain"
-	"github.com/khasansayliev/railbot/internal/usecase"
+	"github.com/khasansayliev/watcher/internal/domain"
+	"github.com/khasansayliev/watcher/internal/usecase"
 )
 
 // Soxta javob — haqiqiy formatga yaqin taxmin.

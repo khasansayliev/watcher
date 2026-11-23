@@ -3,13 +3,13 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: railbot
-      POSTGRES_USER: railbot
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-railbot}
+      POSTGRES_DB: watcher
+      POSTGRES_USER: watcher
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-watcher}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U railbot -d railbot"]
+      test: ["CMD-SHELL", "pg_isready -U watcher -d watcher"]
       interval: 5s
       retries: 10
 
@@ -21,7 +21,7 @@ services:
         condition: service_healthy
     env_file: .env
     environment:
-      DATABASE_URL: postgres://railbot:${POSTGRES_PASSWORD:-railbot}@db:5432/railbot?sslmode=disable
+      DATABASE_URL: postgres://watcher:${POSTGRES_PASSWORD:-watcher}@db:5432/watcher?sslmode=disable
     ports:
       - "8080:8080"
     volumes:

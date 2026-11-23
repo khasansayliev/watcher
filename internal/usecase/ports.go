@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/khasansayliev/railbot/internal/domain"
+	"github.com/khasansayliev/watcher/internal/domain"
 )
 
 // ---- Saqlash portlari ----

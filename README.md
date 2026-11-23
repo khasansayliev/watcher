@@ -1,4 +1,4 @@
-# 🚆 railbot — O'zbekiston temir yo'llari bilet kuzatuvchisi
+# 🚆 Watcher — O'zbekiston temir yo'llari bilet kuzatuvchisi
 
 Ko'p foydalanuvchili platforma. Foydalanuvchi Google orqali kiradi, Telegram'ini ulaydi, so'ng yo'nalish va sana
 bo'yicha kuzatuv yaratadi. Bo'sh joy chiqqanda Telegram'ga xabar keladi. Sotib olish rasmiy saytda qilinadi.
@@ -18,7 +18,7 @@ bo'yicha kuzatuv yaratadi. Bo'sh joy chiqqanda Telegram'ga xabar keladi. Sotib o
 ## Arxitektura (Clean Architecture)
 
 ```
-cmd/railbot/                     composition root (main.go) + PostgreSQL drayveri (driver.go)
+cmd/watcher/                     composition root (main.go) + PostgreSQL drayveri (driver.go)
 internal/
   domain/                        entity va biznes qoidalari: User, Identity, Watch, Route, Train, Filter
   usecase/                       stsenariylar + portlar (interfeyslar)
@@ -42,7 +42,7 @@ internal/
 ```
 
 Bog'liqlik qoidasi: `delivery → usecase → domain`. `domain` hech qaysi qatlamni import qilmaydi, `usecase` faqat `domain`ni biladi.
-Tashqi kutubxonaga faqat `cmd/railbot/driver.go` bog'liq (pgx drayveri). Qolgan kod standart kutubxona bilan yozilgan.
+Tashqi kutubxonaga faqat `cmd/watcher/driver.go` bog'liq (pgx drayveri). Qolgan kod standart kutubxona bilan yozilgan.
 
 ## Sozlash
 
@@ -72,9 +72,9 @@ Docker'siz:
 
 ```bash
 go mod tidy               # pgx drayverini yuklaydi (bir marta; go.sum'ni commit qiling)
-export DATABASE_URL=postgres://user:pass@localhost:5432/railbot?sslmode=disable
+export DATABASE_URL=postgres://user:pass@localhost:5432/watcher?sslmode=disable
 export BASE_URL=http://localhost:8080 GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... TELEGRAM_BOT_TOKEN=...
-go run ./cmd/railbot
+go run ./cmd/watcher
 ```
 
 Migratsiyalar ishga tushganda avtomatik qo'llanadi. Bir nechta instans bir vaqtda ishga tushsa ham xavfsiz: advisory lock ishlatiladi.

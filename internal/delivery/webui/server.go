@@ -10,8 +10,8 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/khasansayliev/railbot/internal/domain"
-	"github.com/khasansayliev/railbot/internal/usecase"
+	"github.com/khasansayliev/watcher/internal/domain"
+	"github.com/khasansayliev/watcher/internal/usecase"
 )
 
 //go:embed templates/*.html

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/khasansayliev/railbot/internal/domain"
+	"github.com/khasansayliev/watcher/internal/domain"
 )
 
 // CheckRequester — kuzatuvni darhol tekshirishni so'rash (Monitor amalga oshiradi).

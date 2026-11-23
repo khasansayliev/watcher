@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/khasansayliev/railbot/internal/domain"
-	"github.com/khasansayliev/railbot/internal/usecase"
+	"github.com/khasansayliev/watcher/internal/domain"
+	"github.com/khasansayliev/watcher/internal/usecase"
 )
 
 func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {

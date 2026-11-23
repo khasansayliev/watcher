@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/khasansayliev/railbot/internal/domain"
+	"github.com/khasansayliev/watcher/internal/domain"
 )
 
 // AuthService — Google orqali kirish va sessiyalar.

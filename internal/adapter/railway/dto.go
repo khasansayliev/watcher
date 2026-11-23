@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/khasansayliev/railbot/internal/domain"
+	"github.com/khasansayliev/watcher/internal/domain"
 )
 
 type searchRequest struct {

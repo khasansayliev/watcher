@@ -17,9 +17,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/khasansayliev/railbot/internal/domain"
-	"github.com/khasansayliev/railbot/internal/pkg/textfmt"
-	"github.com/khasansayliev/railbot/internal/usecase"
+	"github.com/khasansayliev/watcher/internal/domain"
+	"github.com/khasansayliev/watcher/internal/pkg/textfmt"
+	"github.com/khasansayliev/watcher/internal/usecase"
 )
 
 const (

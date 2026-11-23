@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/khasansayliev/railbot/internal/domain"
+	"github.com/khasansayliev/watcher/internal/domain"
 )
 
 type MonitorConfig struct {

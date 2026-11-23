@@ -13,16 +13,16 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/khasansayliev/railbot/internal/adapter/clock"
-	"github.com/khasansayliev/railbot/internal/adapter/google"
-	"github.com/khasansayliev/railbot/internal/adapter/postgres"
-	"github.com/khasansayliev/railbot/internal/adapter/railway"
-	"github.com/khasansayliev/railbot/internal/adapter/stations"
-	"github.com/khasansayliev/railbot/internal/adapter/telegram"
-	"github.com/khasansayliev/railbot/internal/config"
-	"github.com/khasansayliev/railbot/internal/delivery/telegrambot"
-	"github.com/khasansayliev/railbot/internal/delivery/webui"
-	"github.com/khasansayliev/railbot/internal/usecase"
+	"github.com/khasansayliev/watcher/internal/adapter/clock"
+	"github.com/khasansayliev/watcher/internal/adapter/google"
+	"github.com/khasansayliev/watcher/internal/adapter/postgres"
+	"github.com/khasansayliev/watcher/internal/adapter/railway"
+	"github.com/khasansayliev/watcher/internal/adapter/stations"
+	"github.com/khasansayliev/watcher/internal/adapter/telegram"
+	"github.com/khasansayliev/watcher/internal/config"
+	"github.com/khasansayliev/watcher/internal/delivery/telegrambot"
+	"github.com/khasansayliev/watcher/internal/delivery/webui"
+	"github.com/khasansayliev/watcher/internal/usecase"
 )
 
 func main() {

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/khasansayliev/railbot/internal/adapter/telegram"
+	"github.com/khasansayliev/watcher/internal/adapter/telegram"
 )
 
 type Linker interface {

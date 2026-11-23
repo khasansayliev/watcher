@@ -5,8 +5,8 @@ import (
 	"time"
 	_ "time/tzdata" // vaqt zonalari binar ichida
 
-	"github.com/khasansayliev/railbot/internal/domain"
-	"github.com/khasansayliev/railbot/internal/usecase"
+	"github.com/khasansayliev/watcher/internal/domain"
+	"github.com/khasansayliev/watcher/internal/usecase"
 )
 
 type Local struct{ loc *time.Location }

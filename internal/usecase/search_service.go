@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/khasansayliev/railbot/internal/domain"
+	"github.com/khasansayliev/watcher/internal/domain"
 )
 
 // PauseInfo — tashqi API xatolari sababli pauza holati (Monitor amalga oshiradi).

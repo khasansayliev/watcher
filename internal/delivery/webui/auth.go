@@ -8,13 +8,13 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/khasansayliev/railbot/internal/domain"
-	"github.com/khasansayliev/railbot/internal/usecase"
+	"github.com/khasansayliev/watcher/internal/domain"
+	"github.com/khasansayliev/watcher/internal/usecase"
 )
 
 const (
-	sessionCookie = "rb_session"
-	stateCookie   = "rb_oauth_state"
+	sessionCookie = "watcher_session"
+	stateCookie   = "watcher_oauth_state"
 )
 
 type ctxKey struct{}

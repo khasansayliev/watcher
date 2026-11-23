@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/khasansayliev/railbot/internal/pkg/textfmt"
+	"github.com/khasansayliev/watcher/internal/pkg/textfmt"
 )
 
 // Watch — foydalanuvchining kuzatuvi (asosiy entity).
