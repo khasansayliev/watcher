@@ -31,14 +31,14 @@
   <h2>Mening kuzatuvlarim ({{len .Watches}}){{if .MaxWatches}} <small>· faol limit: {{.MaxWatches}}</small>{{end}}</h2>
   {{if .Watches}}
   <table>
-    <thead><tr><th>Yo'nalish</th><th>Sana</th><th>Filtr</th><th>Oxirgi tekshiruv</th><th>Joy</th><th></th></tr></thead>
+    <thead><tr><th>Yo'nalish</th><th>Sana</th><th>Filtr</th><th>Tekshiruv</th><th>Joy</th><th></th></tr></thead>
     <tbody>
     {{range .Watches}}
       <tr class="{{if not .Active}}off{{end}}">
         <td><b>{{.RouteLabel}}</b>{{if not .Active}}<br><small>to'xtatilgan</small>{{end}}</td>
         <td>{{.Date}}</td>
         <td>{{.Filter}}</td>
-        <td>{{.LastCheck}}{{if .LastStatus}}<br><small>{{.LastStatus}}</small>{{end}}
+        <td><b>{{.Interval}}</b><br><small>oxirgi: {{.LastCheck}}</small>{{if .LastStatus}}<br><small>{{.LastStatus}}</small>{{end}}
             {{if .LastNotified}}<br><small>Xabar: {{.LastNotified}}</small>{{end}}</td>
         <td>{{if .Matches}}<span class="badge ok">{{.Matches}} poyezd</span>{{else}}<span class="badge">yo'q</span>{{end}}</td>
         <td class="actions">

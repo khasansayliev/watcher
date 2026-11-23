@@ -47,3 +47,21 @@ func Ago(t, now time.Time) string {
 		return t.Format("02.01 15:04")
 	}
 }
+
+// Interval: 10s -> "10 soniya", 5m -> "5 daqiqa", 1h30m -> "1 soat 30 daqiqa", 48h -> "2 kun".
+func Interval(d time.Duration) string {
+	switch {
+	case d <= 0:
+		return "—"
+	case d%(24*time.Hour) == 0:
+		return fmt.Sprintf("%d kun", d/(24*time.Hour))
+	case d%time.Hour == 0:
+		return fmt.Sprintf("%d soat", d/time.Hour)
+	case d >= time.Hour && d%time.Minute == 0:
+		return fmt.Sprintf("%d soat %d daqiqa", d/time.Hour, (d%time.Hour)/time.Minute)
+	case d%time.Minute == 0:
+		return fmt.Sprintf("%d daqiqa", d/time.Minute)
+	default:
+		return fmt.Sprintf("%d soniya", d/time.Second)
+	}
+}

@@ -21,7 +21,7 @@ type layoutVM struct {
 	Title, Flash, FlashKind string
 	User                    *userVM
 	Paused                  bool
-	PausedUntil, Interval   string
+	PausedUntil             string
 }
 
 type loginVM struct {
@@ -47,7 +47,7 @@ type watchVM struct {
 	ID                                  int64
 	RouteLabel, Date, Filter            string
 	LastCheck, LastStatus, LastNotified string
-	SearchURL                           string
+	SearchURL, Interval                 string
 	Active                              bool
 	Matches                             int
 }
@@ -82,8 +82,7 @@ type presenter struct {
 func (p presenter) layout(title, flash, kind string, u domain.User, admin bool, st MonitorStatus) layoutVM {
 	vm := layoutVM{
 		Title: title, Flash: flash, FlashKind: kind,
-		User:     &userVM{Name: u.DisplayName(), Email: u.Email, Avatar: u.AvatarURL, IsAdmin: admin},
-		Interval: st.Interval().String(),
+		User: &userVM{Name: u.DisplayName(), Email: u.Email, Avatar: u.AvatarURL, IsAdmin: admin},
 	}
 	if until := st.PausedUntil(); p.clock.Now().Before(until) {
 		vm.Paused = true
@@ -96,8 +95,8 @@ func (p presenter) routeLabel(r domain.Route) string {
 	return p.stations.Name(r.From) + " → " + p.stations.Name(r.To)
 }
 
-func (p presenter) watches(ws []domain.Watch) []watchVM {
-	now := p.clock.Now()
+func (p presenter) watches(ws []domain.Watch, policy domain.PollingPolicy) []watchVM {
+	now, today := p.clock.Now(), p.clock.Today()
 	out := make([]watchVM, 0, len(ws))
 	for _, w := range ws {
 		vm := watchVM{
@@ -109,6 +108,7 @@ func (p presenter) watches(ws []domain.Watch) []watchVM {
 			LastStatus: w.LastStatus,
 			Active:     w.Active,
 			Matches:    w.LastMatches,
+			Interval:   "har " + textfmt.Interval(policy.IntervalFor(w.Route.Date, today)),
 			SearchURL: "/search?" + url.Values{
 				"from": {w.Route.From}, "to": {w.Route.To}, "date": {w.Route.Date},
 			}.Encode(),

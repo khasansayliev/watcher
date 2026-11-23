@@ -45,6 +45,12 @@ type LinkCodeRepository interface {
 	Consume(ctx context.Context, code string, now time.Time) (userID int64, err error)
 }
 
+// PollingRuleRepository — tekshiruv oraliqlari jadvali (admin boshqaradi).
+type PollingRuleRepository interface {
+	Get(ctx context.Context) (domain.PollingPolicy, error)
+	Save(ctx context.Context, p domain.PollingPolicy) error
+}
+
 // ---- Tashqi xizmat portlari ----
 
 // TrainSearcher — bo'sh joylar manbai (temir yo'l API).

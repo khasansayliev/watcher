@@ -162,3 +162,53 @@ func TestSearchThrottlePerUser(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestPollingUpdateAdminOnly(t *testing.T) {
+	e := newEnv(10, 0)
+	ctx := context.Background()
+	user := e.users.add(domain.User{Email: "ali@example.com"})
+	admin := e.users.add(domain.User{Email: "Admin@Example.com"})
+	rules := []domain.PollingRule{{MaxDaysLeft: 3, Interval: 30 * time.Second}, {MaxDaysLeft: 0, Interval: 6 * time.Hour}}
+
+	if _, err := e.polling.Update(ctx, user, rules); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("oddiy foydalanuvchi jadvalni o'zgartira olmasligi kerak: %v", err)
+	}
+	if _, err := e.polling.Stats(ctx, user); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatal("statistika ham faqat admin uchun")
+	}
+	p, err := e.polling.Update(ctx, admin, rules)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.UpdatedBy != "Admin@Example.com" || p.UpdatedAt.IsZero() {
+		t.Fatalf("kim/qachon yozilmadi: %+v", p)
+	}
+	var ve *domain.ValidationError
+	if _, err := e.polling.Update(ctx, admin, []domain.PollingRule{{MaxDaysLeft: 0, Interval: 5 * time.Second}}); !errors.As(err, &ve) {
+		t.Fatal("10 soniyadan qisqa oraliq rad etilishi kerak")
+	}
+	if got, _ := e.polling.Policy(ctx); got.Rules[0].Interval != 30*time.Second {
+		t.Fatal("noto'g'ri urinish saqlangan jadvalni buzmasligi kerak")
+	}
+}
+
+func TestPollingStats(t *testing.T) {
+	e := newEnv(10, 0)
+	ctx := context.Background()
+	a, b := e.user("A"), e.user("B")
+	mustCreate(t, e, a, "2900000", "2900700", "2026-11-24")
+	mustCreate(t, e, b, "2900000", "2900700", "2026-11-24") // xuddi shu yo'nalish
+	mustCreate(t, e, a, "2900000", "2900800", "2027-02-01")
+
+	stats, err := e.polling.Stats(ctx, e.users.add(domain.User{Email: "admin@example.com"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, last := stats[0], stats[len(stats)-1]
+	if first.Routes != 1 || first.Watches != 2 || first.RequestsPerHour != 360 {
+		t.Fatalf("10 soniyalik bosqich: %+v", first)
+	}
+	if !last.Rule.IsDefault() || last.Routes != 1 || last.RequestsPerHour != 1.0/12 {
+		t.Fatalf("qolganlari: %+v", last)
+	}
+}

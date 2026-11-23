@@ -44,8 +44,13 @@ type TelegramUseCase interface {
 	SendTest(ctx context.Context, userID int64) error
 }
 
+type PollingUseCase interface {
+	Policy(ctx context.Context) (domain.PollingPolicy, error)
+	Update(ctx context.Context, actor domain.User, rules []domain.PollingRule) (domain.PollingPolicy, error)
+	Stats(ctx context.Context, actor domain.User) ([]usecase.TierStats, error)
+}
+
 type MonitorStatus interface {
-	Interval() time.Duration
 	PausedUntil() time.Time
 }
 
@@ -58,6 +63,7 @@ type Deps struct {
 	Watches       WatchUseCase
 	Search        SearchUseCase
 	Telegram      TelegramUseCase
+	Polling       PollingUseCase
 	Status        MonitorStatus
 	Raw           RawResponseSource
 	Stations      usecase.StationDirectory
@@ -104,6 +110,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /settings/telegram/unlink", s.auth(s.telegramUnlink))
 	mux.Handle("POST /settings/telegram/test", s.auth(s.telegramTest))
 	mux.Handle("GET /debug/last-response", s.auth(s.lastResponse))
+	mux.Handle("GET /admin/polling", s.auth(s.adminPolling))
+	mux.Handle("POST /admin/polling", s.auth(s.adminPollingSave))
 
 	return securityHeaders(sameOrigin(mux))
 }

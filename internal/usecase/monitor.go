@@ -16,7 +16,9 @@ import (
 const minBackoff = time.Minute
 
 type MonitorConfig struct {
-	Interval   time.Duration // asosiy tekshiruv oralig'i
+	// Tick — monitor qanchada bir uyg'onib, vaqti kelgan yo'nalishlarni qidiradi.
+	// Har bir yo'nalishning o'z oralig'i jadvaldan (PollingPolicy) olinadi.
+	Tick       time.Duration
 	MaxBackoff time.Duration // xatolardan keyingi eng uzun pauza
 	GroupPause time.Duration // turli yo'nalishlar so'rovlari orasidagi pauza
 	// MaxSearchesPerCycle — bir siklda saytga yuboriladigan so'rovlar chegarasi.
@@ -26,8 +28,10 @@ type MonitorConfig struct {
 
 // Monitor barcha foydalanuvchilarning faol kuzatuvlarini davriy tekshiradi.
 // Bir xil yo'nalish+sana qancha foydalanuvchida bo'lmasin, saytga bitta so'rov ketadi.
+// Har bir yo'nalish jo'nashgacha qolgan kunga qarab jadvaldagi oraliqda tekshiriladi.
 type Monitor struct {
 	repo     WatchRepository
+	policies PollingRuleRepository
 	users    UserRepository
 	searcher TrainSearcher
 	notifier Notifier
@@ -43,14 +47,15 @@ type Monitor struct {
 	pausedUntil time.Time
 }
 
-func NewMonitor(repo WatchRepository, users UserRepository, s TrainSearcher, n Notifier, c Clock, cfg MonitorConfig, log *slog.Logger) *Monitor {
+func NewMonitor(repo WatchRepository, policies PollingRuleRepository, users UserRepository, s TrainSearcher, n Notifier, c Clock, cfg MonitorConfig, log *slog.Logger) *Monitor {
 	if cfg.MaxBackoff == 0 {
 		cfg.MaxBackoff = 30 * time.Minute
 	}
-	return &Monitor{repo: repo, users: users, searcher: s, notifier: n, clock: c, cfg: cfg, log: log, trigger: make(chan int64, 64)}
+	if cfg.Tick == 0 {
+		cfg.Tick = domain.MinCheckInterval
+	}
+	return &Monitor{repo: repo, policies: policies, users: users, searcher: s, notifier: n, clock: c, cfg: cfg, log: log, trigger: make(chan int64, 64)}
 }
-
-func (m *Monitor) Interval() time.Duration { return m.cfg.Interval }
 
 func (m *Monitor) PausedUntil() time.Time {
 	m.mu.Lock()
@@ -74,7 +79,7 @@ func (m *Monitor) Run(ctx context.Context) {
 			return
 		case <-timer.C:
 			m.RunCycle(ctx, 0)
-			timer.Reset(jitter(m.cfg.Interval))
+			timer.Reset(jitter(m.cfg.Tick))
 		case id := <-m.trigger:
 			m.RunCycle(ctx, id)
 		}
@@ -115,6 +120,9 @@ func (m *Monitor) RunCycle(ctx context.Context, onlyID int64) {
 	}
 
 	groups := m.group(ctx, watches)
+	if onlyID == 0 {
+		groups = m.due(ctx, groups)
+	}
 	if n := m.cfg.MaxSearchesPerCycle; n > 0 && len(groups) > n {
 		m.log.Info("so'rovlar chegarasi — qolganlari keyingi siklda", "routes", len(groups), "limit", n)
 		groups = groups[:n]
@@ -170,6 +178,23 @@ func (m *Monitor) group(ctx context.Context, watches []domain.Watch) []routeGrou
 	return out
 }
 
+// due faqat oralig'i o'tgan yo'nalishlarni qoldiradi.
+func (m *Monitor) due(ctx context.Context, groups []routeGroup) []routeGroup {
+	policy, err := m.policies.Get(ctx)
+	if err != nil {
+		m.log.Warn("oraliqlar jadvalini o'qib bo'lmadi — standart jadval ishlatiladi", "err", err)
+		policy = domain.DefaultPollingPolicy()
+	}
+	now, today := m.clock.Now(), m.clock.Today()
+	out := groups[:0]
+	for _, g := range groups {
+		if g.lastCheck.IsZero() || now.Sub(g.lastCheck) >= policy.IntervalFor(g.route.Date, today) {
+			out = append(out, g)
+		}
+	}
+	return out
+}
+
 func (m *Monitor) evaluate(ctx context.Context, w domain.Watch, trains []domain.Train, now time.Time, chats map[int64]string) {
 	matches, notify, sig := w.Evaluate(trains)
 	var nerr error
@@ -199,8 +224,7 @@ func (m *Monitor) fail(err error) time.Duration {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.backoff == 0 {
-		// Oraliq qisqa bo'lsa ham xatodan keyin kamida 1 daqiqa kutamiz.
-		m.backoff = max(m.cfg.Interval, minBackoff)
+		m.backoff = minBackoff
 	} else {
 		m.backoff *= 2
 	}

@@ -76,6 +76,7 @@ func TestMonitorUserWithoutTelegram(t *testing.T) {
 		t.Fatal("Telegram yo'q — xabar ketmasligi va imzo saqlanmasligi kerak")
 	}
 	_ = e.users.SetTelegramChat(ctx, u.ID, "A2")
+	e.clock.add(2 * time.Hour) // 12 kun qolgan — oraliq 1 soat
 	e.monitor.RunCycle(ctx, 0)
 	if e.notif.count("A2") != 1 {
 		t.Fatal("qayta ulangach xabar kelishi kerak")
@@ -106,7 +107,7 @@ func TestMonitorBackoffOnUpstreamError(t *testing.T) {
 		t.Fatalf("qo'lda qidiruv ham pauzada bo'lishi kerak: %v", err)
 	}
 
-	e.clock.add(21 * time.Minute)
+	e.clock.add(61 * time.Minute) // pauza tugadi va 1 soatlik oraliq ham o'tdi
 	e.search.err = nil
 	e.monitor.RunCycle(ctx, 0)
 	if !e.monitor.PausedUntil().IsZero() {
@@ -127,13 +128,54 @@ func TestMonitorExpiresPastWatches(t *testing.T) {
 	}
 }
 
+func TestMonitorChecksOnlyDueRoutes(t *testing.T) {
+	e := newEnv(10, 0)
+	ctx := context.Background()
+	u := e.user("A")
+	mustCreate(t, e, u, "2900000", "2900700", "2026-11-24") // ertaga: 10 s
+	mustCreate(t, e, u, "2900000", "2900800", "2026-11-28") // 5 kun: 5 daqiqa
+	mustCreate(t, e, u, "2900000", "2900930", "2027-01-10") // 48 kun: 12 soat
+
+	e.monitor.RunCycle(ctx, 0)
+	if e.search.calls != 3 {
+		t.Fatalf("birinchi siklda hammasi tekshirilishi kerak, %d", e.search.calls)
+	}
+	step := func(d time.Duration, wantCalls int) {
+		t.Helper()
+		before := e.search.calls
+		e.clock.add(d)
+		e.monitor.RunCycle(ctx, 0)
+		if got := e.search.calls - before; got != wantCalls {
+			t.Fatalf("+%s: %d so'rov, kutilgan %d", d, got, wantCalls)
+		}
+	}
+	step(11*time.Second, 1) // faqat ertangi
+	step(5*time.Minute, 2)  // ertangi + 5 kunlik; 48 kunlik hali emas
+	step(12*time.Hour, 3)   // hammasining vaqti keldi
+}
+
+func TestMonitorPolicyChangeAppliesWithoutRestart(t *testing.T) {
+	e := newEnv(10, 0)
+	ctx := context.Background()
+	mustCreate(t, e, e.user("A"), "2900000", "2900700", "2027-01-10") // 12 soat
+	e.monitor.RunCycle(ctx, 0)
+
+	admin := e.users.add(domain.User{Email: "admin@example.com"})
+	if _, err := e.polling.Update(ctx, admin, []domain.PollingRule{{MaxDaysLeft: 0, Interval: time.Minute}}); err != nil {
+		t.Fatal(err)
+	}
+	before := e.search.calls
+	e.clock.add(61 * time.Second)
+	e.monitor.RunCycle(ctx, 0)
+	if e.search.calls != before+1 {
+		t.Fatal("yangi jadval keyingi siklda kuchga kirishi kerak")
+	}
+}
+
 func TestMonitorShortIntervalStillBacksOffOneMinute(t *testing.T) {
 	e := newEnv(10, 0)
 	ctx := context.Background()
-	e.monitor = usecase.NewMonitor(e.watches, e.users, e.search, e.notif, e.clock,
-		usecase.MonitorConfig{Interval: 10 * time.Second}, discardLog())
-	e.ws = usecase.NewWatchService(e.watches, e.users, e.clock, e.monitor, 10)
-	mustCreate(t, e, e.user("A"), "2900000", "2900700", "2026-12-05")
+	mustCreate(t, e, e.user("A"), "2900000", "2900700", "2026-11-24") // ertaga — har 10 soniya
 
 	e.search.err = &usecase.UpstreamError{Status: 503}
 	e.monitor.RunCycle(ctx, 0)

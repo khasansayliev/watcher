@@ -1,0 +1,51 @@
+{{template "head" .}}
+<section class="card">
+  <h2>Tekshiruv oraliqlari</h2>
+  <p class="hint">Har bir kuzatuv jo'nashgacha qolgan kunga qarab shu jadvaldagi oraliqda tekshiriladi.
+    Qator mos kelishi uchun qolgan kun chegaradan <b>kam</b> bo'lishi kerak (bugun = 0, ertaga = 1).
+    Eng qisqa oraliq — {{.MinInterval}}. O'zgarish serverni qayta ishga tushirmasdan kuchga kiradi.</p>
+  <form method="post" action="/admin/polling">
+    <input type="hidden" name="n" value="{{.Count}}">
+    <table class="stack">
+      <thead><tr><th>Jo'nashgacha</th><th>Tekshiruv oralig'i</th><th></th></tr></thead>
+      <tbody>
+      {{range .Rows}}
+        <tr>
+          <td>{{if .IsDefault}}<input type="hidden" name="d{{.Index}}" value="0"><b>Qolganlari</b>
+              {{else}}<span class="row"><input name="d{{.Index}}" value="{{.Days}}" type="number" min="1" max="365" style="width:90px" {{if .IsNew}}placeholder="kun"{{end}}> kundan kam</span>{{end}}</td>
+          <td><span class="row">har <input name="v{{.Index}}" value="{{.Value}}" type="number" min="1" style="width:90px">
+            <select name="u{{.Index}}">
+              <option value="s"{{if eq .Unit "s"}} selected{{end}}>soniya</option>
+              <option value="m"{{if eq .Unit "m"}} selected{{end}}>daqiqa</option>
+              <option value="h"{{if eq .Unit "h"}} selected{{end}}>soat</option>
+            </select></span></td>
+          <td>{{if .IsNew}}<small>yangi qator</small>{{else if not .IsDefault}}<label class="row" style="flex-direction:row"><input type="checkbox" name="x{{.Index}}" value="1"> o'chirish</label>{{end}}</td>
+        </tr>
+      {{end}}
+      </tbody>
+    </table>
+    <p class="row" style="margin-top:14px"><button>Saqlash</button>{{if .UpdatedInfo}}<small>{{.UpdatedInfo}}</small>{{end}}</p>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Joriy yuklama</h2>
+  <table class="stack">
+    <thead><tr><th>Bosqich</th><th>Oraliq</th><th>Yo'nalishlar</th><th>Kuzatuvlar</th><th>Saytga so'rov / soat</th></tr></thead>
+    <tbody>
+    {{range .Tiers}}
+      <tr><td>{{.Label}}</td><td>{{.Interval}}</td><td>{{.Routes}}</td><td>{{.Watches}}</td><td>{{.RequestsPerHour}}</td></tr>
+    {{end}}
+      <tr><td><b>Jami</b></td><td></td><td></td><td></td><td><b>{{.TotalPerHour}}</b></td></tr>
+    </tbody>
+  </table>
+  {{if .OverCapacity}}
+  <div class="warn" style="margin-top:14px">Hisob {{.Capacity}} so'rov/soatdan oshdi. So'rovlar orasidagi 2–4 soniyalik pauza tufayli amalda bundan ko'p yuborilmaydi:
+    yo'nalishlar navbat bilan, jadvaldagidan kechroq tekshiriladi. Oraliqlarni uzaytirishni o'ylab ko'ring.</div>
+  {{else}}
+  <p class="hint">Bir xil yo'nalish va sanani nechta foydalanuvchi kuzatmasin, saytga bitta so'rov ketadi.
+    Amaliy chegara — soatiga taxminan {{.Capacity}} so'rov.</p>
+  {{end}}
+  <p class="hint"><a href="/debug/last-response" target="_blank">Temir yo'l API'ning oxirgi javobi</a> (format moslashtirish uchun)</p>
+</section>
+{{template "foot" .}}

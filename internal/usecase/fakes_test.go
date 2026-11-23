@@ -203,6 +203,23 @@ func (r *memCodes) Consume(_ context.Context, code string, now time.Time) (int64
 	return s.user, nil
 }
 
+type memPolicy struct {
+	mu sync.Mutex
+	p  domain.PollingPolicy
+}
+
+func (r *memPolicy) Get(context.Context) (domain.PollingPolicy, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.p, nil
+}
+func (r *memPolicy) Save(_ context.Context, p domain.PollingPolicy) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.p = p
+	return nil
+}
+
 type fakeSearcher struct {
 	mu     sync.Mutex
 	calls  int
@@ -283,12 +300,14 @@ type env struct {
 	notif    *fakeNotifier
 	clock    *fixedClock
 	idp      *fakeIDP
+	policy   *memPolicy
 
 	monitor  *usecase.Monitor
 	ws       *usecase.WatchService
 	auth     *usecase.AuthService
 	tg       *usecase.TelegramService
 	searchUC *usecase.SearchService
+	polling  *usecase.PollingService
 }
 
 var sample = []domain.Train{{Number: "764Ф", Cars: []domain.Car{{Type: "Сидячий", FreeSeats: 5, Price: 270000}}}}
@@ -302,15 +321,17 @@ func newEnv(maxPerUser, maxSearches int) *env {
 		notif:   &fakeNotifier{},
 		clock:   &fixedClock{t: time.Date(2026, 11, 23, 10, 0, 0, 0, time.UTC)},
 		idp:     &fakeIDP{},
+		policy:  &memPolicy{p: domain.DefaultPollingPolicy()},
 	}
 	e.sessions = &memSessions{m: map[string]session{}, u: e.users}
 	log := discardLog()
-	e.monitor = usecase.NewMonitor(e.watches, e.users, e.search, e.notif, e.clock,
-		usecase.MonitorConfig{Interval: 5 * time.Minute, MaxSearchesPerCycle: maxSearches}, log)
+	e.monitor = usecase.NewMonitor(e.watches, e.policy, e.users, e.search, e.notif, e.clock,
+		usecase.MonitorConfig{Tick: 10 * time.Second, MaxSearchesPerCycle: maxSearches}, log)
 	e.ws = usecase.NewWatchService(e.watches, e.users, e.clock, e.monitor, maxPerUser)
 	e.auth = usecase.NewAuthService(e.idp, e.users, e.sessions, e.clock, 24*time.Hour)
 	e.tg = usecase.NewTelegramService(e.users, e.codes, e.notif, e.clock)
 	e.searchUC = usecase.NewSearchService(e.search, e.monitor, e.clock, 10*time.Second, 0)
+	e.polling = usecase.NewPollingService(e.policy, e.watches, e.clock, []string{"admin@example.com"})
 	return e
 }
 

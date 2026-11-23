@@ -10,11 +10,22 @@ bo'yicha kuzatuv yaratadi. Bo'sh joy chiqqanda Telegram'ga xabar keladi. Sotib o
   Kod bir martalik va 15 daqiqa amal qiladi. Chat ID'ni qo'lda kiritish yo'q, shuning uchun birovning chatiga xabar yuborib bo'lmaydi.
 - Har bir foydalanuvchi **faqat o'z kuzatuvlarini** ko'radi va boshqaradi. Egalik usecase qatlamida tekshiriladi.
 - **Limitlar**: foydalanuvchiga N ta faol kuzatuv (`MAX_WATCHES_PER_USER`). Qo'lda qidiruv har bir foydalanuvchi uchun 10 soniyada bir marta.
+- **Tekshiruv oraliqlari jadvali**: jo'nashga qancha qolganiga qarab, admin `/admin/polling` sahifasida boshqaradi
+  (serverni qayta ishga tushirish shart emas). Boshlang'ich jadval:
+
+  | Jo'nashgacha | Oraliq |
+  |---|---|
+  | 2 kundan kam (bugun, ertaga) | 10 soniya |
+  | 10 kundan kam | 5 daqiqa |
+  | 30 kundan kam | 1 soat |
+  | qolganlari | 12 soat |
+
+  Eng qisqa oraliq 10 soniya. Admin sahifasida har bir bosqichdagi yo'nalishlar soni va saytga taxminiy so'rovlar soni (soatiga) ko'rinadi.
 - **Temir yo'l saytini qiynamaslik**:
   - bir xil yo'nalish+sana uchun qancha foydalanuvchi bo'lmasin, **bitta so'rov** yuboriladi;
   - siklda ko'pi bilan `MAX_SEARCHES_PER_CYCLE` ta so'rov yuboriladi, eng uzoq tekshirilmagan yo'nalishlar birinchi navbatda;
-  - so'rovlar orasida 2–4 soniya pauza bor, shuning uchun saytga ~3 soniyada bittadan ko'p so'rov ketmaydi.
-    Keyingi sikl oldingisi tugagach `POLL_INTERVAL` o'tib boshlanadi: 1 yo'nalish ≈ 10 s, 30 yo'nalish ≈ 1,5–2 daqiqada bir;
+  - monitor har 10 soniyada uyg'onadi va faqat oralig'i o'tgan yo'nalishlarni tekshiradi;
+  - so'rovlar orasida 2–4 soniya pauza bor, shuning uchun saytga ~3 soniyada bittadan ko'p so'rov ketmaydi (soatiga ~1200);
   - xato bo'lsa pauza qilinadi: kamida 1 daqiqa, keyin har safar ×2, 30 daqiqagacha, `Retry-After`ga ham amal qilinadi.
 
 ## Arxitektura (Clean Architecture)
@@ -22,7 +33,7 @@ bo'yicha kuzatuv yaratadi. Bo'sh joy chiqqanda Telegram'ga xabar keladi. Sotib o
 ```
 cmd/watcher/                     composition root (main.go) + PostgreSQL drayveri (driver.go)
 internal/
-  domain/                        entity va biznes qoidalari: User, Identity, Watch, Route, Train, Filter
+  domain/                        entity va biznes qoidalari: User, Identity, Watch, Route, Train, Filter, PollingPolicy
   usecase/                       stsenariylar + portlar (interfeyslar)
     ports.go                     WatchRepository, UserRepository, SessionRepository, LinkCodeRepository,
                                  TrainSearcher, IdentityProvider, Notifier, StationDirectory, Clock
@@ -30,7 +41,8 @@ internal/
     telegram_service.go          Telegram'ni akkauntga bog'lash
     watch_service.go             kuzatuvlar (egalik + limit)
     search_service.go            qo'lda qidiruv (cheklovlar bilan)
-    monitor.go                   davriy tekshiruv (guruhlash, chegara, backoff)
+    polling_service.go           oraliqlar jadvali (faqat admin) va yuklama statistikasi
+    monitor.go                   davriy tekshiruv (jadval bo'yicha, guruhlash, chegara, backoff)
   adapter/
     postgres/                    database/sql repolar + ichki SQL migratsiyalar
     google/                      OAuth 2.0 / OIDC (tashqi kutubxonasiz)
@@ -89,11 +101,10 @@ Migratsiyalar ishga tushganda avtomatik qo'llanadi. Bir nechta instans bir vaqtd
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | — (majburiy) | OAuth client |
 | `BASE_URL` | `http://localhost:8080` | Tashqi manzil. `https://` bo'lsa cookie'lar `Secure` bo'ladi |
 | `TELEGRAM_BOT_TOKEN` | — | Bo'lmasa xabarlar ham, Telegram ulash ham ishlamaydi |
-| `POLL_INTERVAL` | `10s` | Sikllar orasidagi pauza (eng kami `10s`). Sikl o'zi ham vaqt oladi, pastga qarang |
 | `MAX_SEARCHES_PER_CYCLE` | `30` | Bir siklda saytga yuboriladigan so'rovlar chegarasi |
 | `MAX_WATCHES_PER_USER` | `10` | Foydalanuvchiga faol kuzatuvlar soni (`0` = cheksiz) |
 | `SESSION_TTL` | `720h` | Sessiya muddati |
-| `ADMIN_EMAILS` | — | Vergul bilan. Adminlarga "Oxirgi javob" (API debug) sahifasi ochiladi |
+| `ADMIN_EMAILS` | — | Vergul bilan. Adminlar `/admin/polling` (oraliqlar jadvali, yuklama) va API debug sahifasini ko'radi |
 | `RAILWAY_BASE`, `RAILWAY_LANG`, `RAILWAY_COOKIE` | | Temir yo'l API sozlamalari |
 | `STATIONS_FILE`, `TZ_NAME`, `LISTEN_ADDR`, `DATA_DIR` | | |
 

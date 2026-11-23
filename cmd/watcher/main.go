@@ -59,6 +59,7 @@ func run(log *slog.Logger) error {
 	sessions := postgres.NewSessions(db)
 	codes := postgres.NewLinkCodes(db)
 	watchRepo := postgres.NewWatches(db)
+	pollingRepo := postgres.NewPollingRules(db)
 
 	clk := clock.New(cfg.TimeZone)
 	dir, err := stations.Load(cfg.StationsFile)
@@ -81,8 +82,8 @@ func run(log *slog.Logger) error {
 	})
 
 	// --- usecase'lar ---
-	monitor := usecase.NewMonitor(watchRepo, users, rail, notifier, clk, usecase.MonitorConfig{
-		Interval:            cfg.PollInterval,
+	monitor := usecase.NewMonitor(watchRepo, pollingRepo, users, rail, notifier, clk, usecase.MonitorConfig{
+		Tick:                10 * time.Second,
 		MaxBackoff:          30 * time.Minute,
 		GroupPause:          2 * time.Second,
 		MaxSearchesPerCycle: cfg.MaxSearchesPerCycle,
@@ -91,6 +92,7 @@ func run(log *slog.Logger) error {
 	watches := usecase.NewWatchService(watchRepo, users, clk, monitor, cfg.MaxWatchesPerUser)
 	search := usecase.NewSearchService(rail, monitor, clk, 10*time.Second, 2*time.Second)
 	tgService := usecase.NewTelegramService(users, codes, notifier, clk)
+	polling := usecase.NewPollingService(pollingRepo, watchRepo, clk, cfg.AdminEmails)
 
 	// --- delivery ---
 	ui, err := webui.New(webui.Deps{
@@ -98,6 +100,7 @@ func run(log *slog.Logger) error {
 		Watches:       watches,
 		Search:        search,
 		Telegram:      tgService,
+		Polling:       polling,
 		Status:        monitor,
 		Raw:           rail,
 		Stations:      dir,
@@ -124,7 +127,7 @@ func run(log *slog.Logger) error {
 		_ = srv.Shutdown(shCtx)
 	}()
 
-	log.Info("ishga tushdi", "listen", cfg.Listen, "base_url", cfg.BaseURL, "interval", cfg.PollInterval)
+	log.Info("ishga tushdi", "listen", cfg.Listen, "base_url", cfg.BaseURL)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}

@@ -10,9 +10,6 @@ import (
 	"time"
 )
 
-// MinPollInterval — saytga ortiqcha yuklama bermaslik uchun eng kichik oraliq.
-const MinPollInterval = 10 * time.Second
-
 type Config struct {
 	Listen   string
 	BaseURL  string // tashqi manzil: https://bilet.example.uz (OAuth redirect shundan yasaladi)
@@ -31,7 +28,6 @@ type Config struct {
 	RailwayCookie  string
 	StationsFile   string
 
-	PollInterval        time.Duration
 	MaxSearchesPerCycle int
 	MaxWatchesPerUser   int
 	SessionTTL          time.Duration
@@ -69,11 +65,8 @@ func Load() (Config, error) {
 	}
 
 	var err error
-	if c.PollInterval, err = duration("POLL_INTERVAL", "10s"); err != nil {
-		errs = append(errs, err)
-	} else if c.PollInterval < MinPollInterval {
-		c.Warnings = append(c.Warnings, fmt.Sprintf("POLL_INTERVAL %s juda kichik, %s ga oshirildi", c.PollInterval, MinPollInterval))
-		c.PollInterval = MinPollInterval
+	if os.Getenv("POLL_INTERVAL") != "" {
+		c.Warnings = append(c.Warnings, "POLL_INTERVAL endi ishlatilmaydi — oraliqlar admin sahifasidagi jadvaldan olinadi (/admin/polling)")
 	}
 	if c.SessionTTL, err = duration("SESSION_TTL", "720h"); err != nil {
 		errs = append(errs, err)

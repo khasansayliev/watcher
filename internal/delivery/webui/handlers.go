@@ -26,7 +26,12 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 		slog.Error("kuzatuvlar ro'yxati", "err", err)
 		vm.Flash, vm.FlashKind = "Kuzatuvlarni yuklab bo'lmadi", "err"
 	}
-	vm.Watches = s.p.watches(watches)
+	policy, err := s.d.Polling.Policy(r.Context())
+	if err != nil {
+		slog.Error("oraliqlar jadvali", "err", err)
+		policy = domain.DefaultPollingPolicy()
+	}
+	vm.Watches = s.p.watches(watches, policy)
 	s.render(w, "index.html", vm)
 }
 
@@ -218,6 +223,8 @@ func userMessage(err error) string {
 		return ve.Msg
 	case errors.As(err, &pe), errors.As(err, &te):
 		return err.Error()
+	case errors.Is(err, domain.ErrForbidden):
+		return "Bu amal faqat administratorlar uchun"
 	case errors.Is(err, domain.ErrNotFound):
 		return "Topilmadi"
 	case errors.As(err, &ue):
