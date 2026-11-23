@@ -15,8 +15,8 @@ import (
 
 	"github.com/khasansayliev/watcher/internal/adapter/clock"
 	"github.com/khasansayliev/watcher/internal/adapter/google"
-	"github.com/khasansayliev/watcher/internal/adapter/postgres"
 	"github.com/khasansayliev/watcher/internal/adapter/railway"
+	"github.com/khasansayliev/watcher/internal/adapter/sqlite"
 	"github.com/khasansayliev/watcher/internal/adapter/stations"
 	"github.com/khasansayliev/watcher/internal/adapter/telegram"
 	"github.com/khasansayliev/watcher/internal/config"
@@ -47,19 +47,19 @@ func run(log *slog.Logger) error {
 	defer stop()
 
 	// --- adapterlar ---
-	db, err := postgres.Open(ctx, dbDriver, cfg.DatabaseURL)
+	db, err := sqlite.Open(ctx, dbDriver, cfg.DatabasePath)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
-	if err := postgres.Migrate(ctx, db); err != nil {
+	if err := sqlite.Migrate(ctx, db); err != nil {
 		return err
 	}
-	users := postgres.NewUsers(db)
-	sessions := postgres.NewSessions(db)
-	codes := postgres.NewLinkCodes(db)
-	watchRepo := postgres.NewWatches(db)
-	pollingRepo := postgres.NewPollingRules(db)
+	users := sqlite.NewUsers(db)
+	sessions := sqlite.NewSessions(db)
+	codes := sqlite.NewLinkCodes(db)
+	watchRepo := sqlite.NewWatches(db)
+	pollingRepo := sqlite.NewPollingRules(db)
 
 	clk := clock.New(cfg.TimeZone)
 	dir, err := stations.Load(cfg.StationsFile)
@@ -127,7 +127,7 @@ func run(log *slog.Logger) error {
 		_ = srv.Shutdown(shCtx)
 	}()
 
-	log.Info("ishga tushdi", "listen", cfg.Listen, "base_url", cfg.BaseURL)
+	log.Info("ishga tushdi", "listen", cfg.Listen, "base_url", cfg.BaseURL, "db", cfg.DatabasePath)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}

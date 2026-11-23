@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -16,7 +17,7 @@ type Config struct {
 	TimeZone string
 	DataDir  string
 
-	DatabaseURL string
+	DatabasePath string // SQLite fayli
 
 	GoogleClientID     string
 	GoogleClientSecret string
@@ -46,7 +47,7 @@ func Load() (Config, error) {
 		BaseURL:            strings.TrimRight(env("BASE_URL", "http://localhost:8080"), "/"),
 		TimeZone:           env("TZ_NAME", "Asia/Tashkent"),
 		DataDir:            env("DATA_DIR", "./data"),
-		DatabaseURL:        os.Getenv("DATABASE_URL"),
+		DatabasePath:       os.Getenv("DATABASE_PATH"),
 		GoogleClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
 		GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
 		TelegramToken:      os.Getenv("TELEGRAM_BOT_TOKEN"),
@@ -57,8 +58,8 @@ func Load() (Config, error) {
 	}
 
 	var errs []error
-	if c.DatabaseURL == "" {
-		errs = append(errs, errors.New("DATABASE_URL berilmagan"))
+	if c.DatabasePath == "" {
+		c.DatabasePath = filepath.Join(c.DataDir, "watcher.db")
 	}
 	if c.GoogleClientID == "" || c.GoogleClientSecret == "" {
 		errs = append(errs, errors.New("GOOGLE_CLIENT_ID va GOOGLE_CLIENT_SECRET kerak"))

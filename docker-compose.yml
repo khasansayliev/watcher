@@ -1,32 +1,13 @@
 services:
-  db:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: watcher
-      POSTGRES_USER: watcher
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-watcher}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U watcher -d watcher"]
-      interval: 5s
-      retries: 10
-
   app:
     build: .
     restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
     env_file: .env
-    environment:
-      DATABASE_URL: postgres://watcher:${POSTGRES_PASSWORD:-watcher}@db:5432/watcher?sslmode=disable
     ports:
       - "8080:8080"
     volumes:
+      # SQLite fayli (watcher.db) shu yerda saqlanadi
       - appdata:/app/data
 
 volumes:
-  pgdata:
   appdata:

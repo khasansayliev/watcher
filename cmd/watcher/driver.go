@@ -2,8 +2,8 @@
 
 package main
 
-// PostgreSQL drayveri. Faqat shu fayl tashqi kutubxonaga bog'liq;
+// SQLite drayveri (sof Go, cgo kerak emas). Faqat shu fayl tashqi kutubxonaga bog'liq;
 // qolgan kod standart database/sql bilan ishlaydi.
-import _ "github.com/jackc/pgx/v5/stdlib"
+import _ "modernc.org/sqlite"
 
-const dbDriver = "pgx"
+const dbDriver = "sqlite"

@@ -1,4 +1,4 @@
-package postgres
+package sqlite
 
 import (
 	"context"
@@ -32,15 +32,15 @@ func (r *PollingRules) Get(ctx context.Context) (domain.PollingPolicy, error) {
 	for rows.Next() {
 		var (
 			days, secs int
-			at         time.Time
+			at         sql.NullInt64
 			by         string
 		)
 		if err := rows.Scan(&days, &secs, &at, &by); err != nil {
 			return domain.PollingPolicy{}, err
 		}
 		rules = append(rules, domain.PollingRule{MaxDaysLeft: days, Interval: time.Duration(secs) * time.Second})
-		if at.After(updatedAt) {
-			updatedAt, updatedBy = at, by
+		if t := fromMS(at); t.After(updatedAt) {
+			updatedAt, updatedBy = t, by
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -70,8 +70,8 @@ func (r *PollingRules) Save(ctx context.Context, p domain.PollingPolicy) error {
 	for _, rule := range p.Rules {
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO polling_rules (max_days_left, interval_seconds, updated_at, updated_by)
-			VALUES ($1, $2, $3, $4)`,
-			rule.MaxDaysLeft, int(rule.Interval/time.Second), p.UpdatedAt, p.UpdatedBy); err != nil {
+			VALUES (?1, ?2, ?3, ?4)`,
+			rule.MaxDaysLeft, int(rule.Interval/time.Second), p.UpdatedAt.UnixMilli(), p.UpdatedBy); err != nil {
 			return err
 		}
 	}

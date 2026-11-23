@@ -31,7 +31,7 @@ bo'yicha kuzatuv yaratadi. Bo'sh joy chiqqanda Telegram'ga xabar keladi. Sotib o
 ## Arxitektura (Clean Architecture)
 
 ```
-cmd/watcher/                     composition root (main.go) + PostgreSQL drayveri (driver.go)
+cmd/watcher/                     composition root (main.go) + SQLite drayveri (driver.go)
 internal/
   domain/                        entity va biznes qoidalari: User, Identity, Watch, Route, Train, Filter, PollingPolicy
   usecase/                       stsenariylar + portlar (interfeyslar)
@@ -44,7 +44,7 @@ internal/
     polling_service.go           oraliqlar jadvali (faqat admin) va yuklama statistikasi
     monitor.go                   davriy tekshiruv (jadval bo'yicha, guruhlash, chegara, backoff)
   adapter/
-    postgres/                    database/sql repolar + ichki SQL migratsiyalar
+    sqlite/                      database/sql repolar + ichki SQL migratsiyalar
     google/                      OAuth 2.0 / OIDC (tashqi kutubxonasiz)
     telegram/                    Bot API: xabar yuborish, getUpdates
     railway/                     eticket.railway.uz API (DTO → domain)
@@ -56,7 +56,7 @@ internal/
 ```
 
 Bog'liqlik qoidasi: `delivery → usecase → domain`. `domain` hech qaysi qatlamni import qilmaydi, `usecase` faqat `domain`ni biladi.
-Tashqi kutubxonaga faqat `cmd/watcher/driver.go` bog'liq (pgx drayveri). Qolgan kod standart kutubxona bilan yozilgan.
+Tashqi kutubxonaga faqat `cmd/watcher/driver.go` bog'liq: `modernc.org/sqlite`, sof Go, cgo kerak emas. Qolgan kod standart kutubxona bilan yozilgan.
 
 ## Sozlash
 
@@ -85,19 +85,28 @@ docker compose up -d --build
 Docker'siz:
 
 ```bash
-go mod tidy               # pgx drayverini yuklaydi (bir marta; go.sum'ni commit qiling)
-export DATABASE_URL=postgres://user:pass@localhost:5432/watcher?sslmode=disable
+go mod tidy               # SQLite drayverini yuklaydi (bir marta; go.sum'ni commit qiling)
 export BASE_URL=http://localhost:8080 GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... TELEGRAM_BOT_TOKEN=...
 go run ./cmd/watcher
 ```
 
-Migratsiyalar ishga tushganda avtomatik qo'llanadi. Bir nechta instans bir vaqtda ishga tushsa ham xavfsiz: advisory lock ishlatiladi.
+Migratsiyalar ishga tushganda avtomatik qo'llanadi.
+
+### Ma'lumotlar bazasi: SQLite
+
+- Bitta fayl: `data/watcher.db`. Alohida DB server kerak emas.
+- WAL rejimi, `foreign_keys` yoqilgan, `busy_timeout` 5 soniya. Barcha so'rovlar bitta ulanish orqali o'tadi, shuning uchun "database is locked" xatolari bo'lmaydi.
+- **Bitta server nusxasida ishlating.** SQLite fayli bitta mashinada turadi. Bir nechta nusxa yoki gorizontal masshtab kerak bo'lsa, `usecase` portlari uchun boshqa DB adapteri yoziladi va `main.go`da almashtiriladi.
+- **Zaxira nusxa** (server ishlab turganda ham xavfsiz):
+  ```bash
+  sqlite3 data/watcher.db ".backup data/backup-$(date +%F).db"
+  ```
 
 ### Sozlamalar (env)
 
 | O'zgaruvchi | Default | Izoh |
 |---|---|---|
-| `DATABASE_URL` | — (majburiy) | PostgreSQL ulanish satri |
+| `DATABASE_PATH` | `./data/watcher.db` | SQLite fayli (papkasi avtomatik yaratiladi) |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | — (majburiy) | OAuth client |
 | `BASE_URL` | `http://localhost:8080` | Tashqi manzil. `https://` bo'lsa cookie'lar `Secure` bo'ladi |
 | `TELEGRAM_BOT_TOKEN` | — | Bo'lmasa xabarlar ham, Telegram ulash ham ishlamaydi |
@@ -112,6 +121,7 @@ Migratsiyalar ishga tushganda avtomatik qo'llanadi. Bir nechta instans bir vaqtd
 
 ```bash
 go test -race ./...
+python3 scripts/check_sql.py   # SQLite sxemasi va adapter so'rovlari
 ```
 
 Domen va usecase'lar soxta (fake) portlar bilan, tarmoqsiz va bazasiz tekshiriladi. Testlar qamrab olgan holatlar:
