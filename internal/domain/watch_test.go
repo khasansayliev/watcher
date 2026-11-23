@@ -38,21 +38,39 @@ func TestMatchTrainsFilters(t *testing.T) {
 
 func TestNewWatchValidation(t *testing.T) {
 	now := time.Now()
-	ok := NewWatchParams{Route: Route{From: "1", To: "2", Date: "2026-12-05"}, ChatID: "42"}
-	if _, err := NewWatch(ok, "2026-11-23", now); err != nil {
+	owner := User{ID: 7, TelegramChatID: "42"}
+	ok := NewWatchParams{Route: Route{From: "1", To: "2", Date: "2026-12-05"}}
+	w, err := NewWatch(owner, ok, "2026-11-23", now)
+	if err != nil {
 		t.Fatal(err)
 	}
-	bad := []NewWatchParams{
-		{Route: Route{From: "1", To: "1", Date: "2026-12-05"}, ChatID: "42"},
-		{Route: Route{From: "1", To: "2", Date: "2026-11-01"}, ChatID: "42"},
-		{Route: Route{From: "1", To: "2", Date: "05.12.2026"}, ChatID: "42"},
-		{Route: Route{From: "1", To: "2", Date: "2026-12-05"}, ChatID: " "},
+	if w.UserID != 7 || !w.Active {
+		t.Fatalf("egasi/holati noto'g'ri: %+v", w)
 	}
-	for i, p := range bad {
+	bad := []struct {
+		u User
+		p NewWatchParams
+	}{
+		{owner, NewWatchParams{Route: Route{From: "1", To: "1", Date: "2026-12-05"}}},
+		{owner, NewWatchParams{Route: Route{From: "1", To: "2", Date: "2026-11-01"}}},
+		{owner, NewWatchParams{Route: Route{From: "1", To: "2", Date: "05.12.2026"}}},
+		{owner, NewWatchParams{Route: ok.Route, Filter: Filter{MinSeats: 99}}},
+		{User{ID: 7}, ok}, // Telegram ulanmagan
+	}
+	for i, c := range bad {
 		var ve *ValidationError
-		if _, err := NewWatch(p, "2026-11-23", now); !errors.As(err, &ve) {
+		if _, err := NewWatch(c.u, c.p, "2026-11-23", now); !errors.As(err, &ve) {
 			t.Errorf("#%d: ValidationError kutilgan, olindi %v", i, err)
 		}
+	}
+}
+
+func TestIdentityValidate(t *testing.T) {
+	if err := (Identity{Subject: "1", Email: "a@b.c", EmailVerified: true}).Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if err := (Identity{Subject: "1", Email: "a@b.c"}).Validate(); err == nil {
+		t.Fatal("tasdiqlanmagan email rad etilishi kerak")
 	}
 }
 

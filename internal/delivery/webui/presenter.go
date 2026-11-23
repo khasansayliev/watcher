@@ -10,28 +10,46 @@ import (
 	"github.com/khasansayliev/railbot/internal/usecase"
 )
 
-// View-modellar: shablonlar faqat tayyor satrlar bilan ishlaydi, mantiq yo'q.
+// View-modellar: shablonlar faqat tayyor qiymatlar bilan ishlaydi, mantiq yo'q.
+
+type userVM struct {
+	Name, Email, Avatar string
+	IsAdmin             bool
+}
 
 type layoutVM struct {
 	Title, Flash, FlashKind string
-	TelegramOK, Paused      bool
+	User                    *userVM
+	Paused                  bool
 	PausedUntil, Interval   string
 }
 
-type indexVM struct {
+type loginVM struct {
+	Error string
+}
+
+type dashboardVM struct {
 	layoutVM
-	Stations      []domain.Station
-	Today         string
-	DefaultChatID string
-	Watches       []watchVM
+	Stations   []domain.Station
+	Today      string
+	HasTG      bool
+	MaxWatches int
+	Watches    []watchVM
+}
+
+type settingsVM struct {
+	layoutVM
+	HasTG, TelegramOK bool
+	Email, Since      string
 }
 
 type watchVM struct {
-	ID, RouteLabel, Date, Filter, ChatID string
-	LastCheck, LastStatus, LastNotified  string
-	SearchURL                            string
-	Active                               bool
-	Matches                              int
+	ID                                  int64
+	RouteLabel, Date, Filter            string
+	LastCheck, LastStatus, LastNotified string
+	SearchURL                           string
+	Active                              bool
+	Matches                             int
 }
 
 type searchVM struct {
@@ -56,14 +74,17 @@ type carVM struct {
 	Price     string
 }
 
-// presenter domen obyektlarini view-modellarga o'giradi.
 type presenter struct {
 	stations usecase.StationDirectory
 	clock    usecase.Clock
 }
 
-func (p presenter) layout(title, flash, kind string, tgOK bool, st MonitorStatus) layoutVM {
-	vm := layoutVM{Title: title, Flash: flash, FlashKind: kind, TelegramOK: tgOK, Interval: st.Interval().String()}
+func (p presenter) layout(title, flash, kind string, u domain.User, admin bool, st MonitorStatus) layoutVM {
+	vm := layoutVM{
+		Title: title, Flash: flash, FlashKind: kind,
+		User:     &userVM{Name: u.DisplayName(), Email: u.Email, Avatar: u.AvatarURL, IsAdmin: admin},
+		Interval: st.Interval().String(),
+	}
 	if until := st.PausedUntil(); p.clock.Now().Before(until) {
 		vm.Paused = true
 		vm.PausedUntil = until.In(p.clock.Now().Location()).Format("15:04:05")
@@ -84,7 +105,6 @@ func (p presenter) watches(ws []domain.Watch) []watchVM {
 			RouteLabel: p.routeLabel(w.Route),
 			Date:       w.Route.Date,
 			Filter:     filterLabel(w.Filter),
-			ChatID:     w.ChatID,
 			LastCheck:  textfmt.Ago(w.LastCheck, now),
 			LastStatus: w.LastStatus,
 			Active:     w.Active,

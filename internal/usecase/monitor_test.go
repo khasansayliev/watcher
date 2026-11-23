@@ -3,10 +3,6 @@ package usecase_test
 import (
 	"context"
 	"errors"
-	"io"
-	"log/slog"
-	"strconv"
-	"sync"
 	"testing"
 	"time"
 
@@ -14,176 +10,119 @@ import (
 	"github.com/khasansayliev/railbot/internal/usecase"
 )
 
-// ---- fake portlar: usecase tarmoqsiz, to'liq izolyatsiyada tekshiriladi ----
-
-type memRepo struct {
-	mu sync.Mutex
-	ws []domain.Watch
-	n  int
-}
-
-func (r *memRepo) Create(_ context.Context, w domain.Watch) (domain.Watch, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.n++
-	w.ID = strconv.Itoa(r.n)
-	r.ws = append(r.ws, w)
-	return w, nil
-}
-func (r *memRepo) Get(_ context.Context, id string) (domain.Watch, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	for _, w := range r.ws {
-		if w.ID == id {
-			return w, nil
-		}
-	}
-	return domain.Watch{}, domain.ErrNotFound
-}
-func (r *memRepo) List(context.Context) ([]domain.Watch, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return append([]domain.Watch(nil), r.ws...), nil
-}
-func (r *memRepo) Update(_ context.Context, id string, fn func(*domain.Watch)) (domain.Watch, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	for i := range r.ws {
-		if r.ws[i].ID == id {
-			fn(&r.ws[i])
-			return r.ws[i], nil
-		}
-	}
-	return domain.Watch{}, domain.ErrNotFound
-}
-func (r *memRepo) Delete(context.Context, string) error { return nil }
-
-type fakeSearcher struct {
-	calls  int
-	trains []domain.Train
-	err    error
-}
-
-func (f *fakeSearcher) Search(context.Context, domain.Route) ([]domain.Train, error) {
-	f.calls++
-	return f.trains, f.err
-}
-
-type fakeNotifier struct{ sent []string }
-
-func (f *fakeNotifier) Enabled() bool { return true }
-func (f *fakeNotifier) NotifyAvailability(_ context.Context, chat string, _ domain.Route, _ []domain.Match) error {
-	f.sent = append(f.sent, chat)
-	return nil
-}
-func (f *fakeNotifier) SendTest(context.Context, string) error { return nil }
-
-type fixedClock struct{ t time.Time }
-
-func (c *fixedClock) Now() time.Time { return c.t }
-func (c *fixedClock) Today() string  { return c.t.Format(domain.DateLayout) }
-
-var sample = []domain.Train{{Number: "764Ф", Cars: []domain.Car{{Type: "Сидячий", FreeSeats: 5, Price: 270000}}}}
-
-func setup() (*memRepo, *fakeSearcher, *fakeNotifier, *fixedClock, *usecase.Monitor, *usecase.WatchService) {
-	repo := &memRepo{}
-	s := &fakeSearcher{trains: sample}
-	n := &fakeNotifier{}
-	clk := &fixedClock{t: time.Date(2026, 11, 23, 10, 0, 0, 0, time.UTC)}
-	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	m := usecase.NewMonitor(repo, s, n, clk, usecase.MonitorConfig{Interval: 5 * time.Minute}, log)
-	ws := usecase.NewWatchService(repo, n, clk, m)
-	return repo, s, n, clk, m, ws
-}
-
-func create(t *testing.T, ws *usecase.WatchService, chat, date string) domain.Watch {
+func mustCreate(t *testing.T, e *env, u domain.User, from, to, date string) domain.Watch {
 	t.Helper()
-	w, err := ws.Create(context.Background(), usecase.CreateWatchInput{
-		Route: domain.Route{From: "2900000", To: "2900700", Date: date}, ChatID: chat,
-	})
+	w, err := e.ws.Create(context.Background(), u.ID, usecase.CreateWatchInput{Route: domain.Route{From: from, To: to, Date: date}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return w
 }
 
-func TestMonitorGroupsAndDeduplicates(t *testing.T) {
-	_, s, n, _, m, ws := setup()
+func TestMonitorOneRequestPerRouteAcrossUsers(t *testing.T) {
+	e := newEnv(10, 0)
 	ctx := context.Background()
-	create(t, ws, "A", "2026-12-05")
-	create(t, ws, "B", "2026-12-05") // xuddi shu yo'nalish
+	a, b := e.user("A"), e.user("B")
+	mustCreate(t, e, a, "2900000", "2900700", "2026-12-05")
+	mustCreate(t, e, b, "2900000", "2900700", "2026-12-05") // boshqa foydalanuvchi, xuddi shu yo'nalish
 
-	m.RunCycle(ctx, "")
-	if s.calls != 1 {
-		t.Fatalf("bir xil yo'nalish uchun 1 so'rov kutilgan, %d", s.calls)
+	e.monitor.RunCycle(ctx, 0)
+	if e.search.calls != 1 {
+		t.Fatalf("bir xil yo'nalish uchun 1 so'rov kutilgan, %d", e.search.calls)
 	}
-	if len(n.sent) != 2 {
-		t.Fatalf("2 ta xabar kutilgan, %v", n.sent)
+	if e.notif.count("A") != 1 || e.notif.count("B") != 1 {
+		t.Fatalf("har bir foydalanuvchi o'z chatiga xabar olishi kerak: %+v", e.notif.sent)
 	}
 
-	m.RunCycle(ctx, "")
-	if len(n.sent) != 2 {
-		t.Fatalf("o'zgarish yo'q — yangi xabar bo'lmasligi kerak, %v", n.sent)
+	e.monitor.RunCycle(ctx, 0)
+	if e.notif.count("A") != 1 {
+		t.Fatal("o'zgarish yo'q — takror xabar bo'lmasligi kerak")
+	}
+}
+
+func TestMonitorRespectsSearchCapAndRotates(t *testing.T) {
+	e := newEnv(10, 2) // siklda ko'pi bilan 2 so'rov
+	ctx := context.Background()
+	u := e.user("A")
+	for _, d := range []string{"2026-12-01", "2026-12-02", "2026-12-03"} {
+		mustCreate(t, e, u, "2900000", "2900700", d)
+	}
+
+	e.monitor.RunCycle(ctx, 0)
+	if e.search.calls != 2 {
+		t.Fatalf("chegara 2, %d so'rov ketdi", e.search.calls)
+	}
+	e.clock.add(time.Minute)
+	e.monitor.RunCycle(ctx, 0)
+
+	ws, _ := e.watches.ListByUser(ctx, u.ID)
+	for _, w := range ws {
+		if w.LastCheck.IsZero() {
+			t.Fatalf("2 sikldan keyin hamma yo'nalish tekshirilgan bo'lishi kerak: %s", w.Route.Date)
+		}
+	}
+}
+
+func TestMonitorUserWithoutTelegram(t *testing.T) {
+	e := newEnv(10, 0)
+	ctx := context.Background()
+	u := e.user("A")
+	w := mustCreate(t, e, u, "2900000", "2900700", "2026-12-05")
+	_ = e.tg.Unlink(ctx, u.ID) // kuzatuv yaratilgandan keyin uzdi
+
+	e.monitor.RunCycle(ctx, 0)
+	got, _ := e.watches.Get(ctx, w.ID)
+	if got.LastSig != "" || len(e.notif.sent) != 0 {
+		t.Fatal("Telegram yo'q — xabar ketmasligi va imzo saqlanmasligi kerak")
+	}
+	_ = e.users.SetTelegramChat(ctx, u.ID, "A2")
+	e.monitor.RunCycle(ctx, 0)
+	if e.notif.count("A2") != 1 {
+		t.Fatal("qayta ulangach xabar kelishi kerak")
 	}
 }
 
 func TestMonitorBackoffOnUpstreamError(t *testing.T) {
-	repo, s, _, clk, m, ws := setup()
+	e := newEnv(10, 0)
 	ctx := context.Background()
-	w := create(t, ws, "A", "2026-12-05")
+	w := mustCreate(t, e, e.user("A"), "2900000", "2900700", "2026-12-05")
 
-	s.err = &usecase.UpstreamError{Status: 429, RetryAfter: 20 * time.Minute}
-	m.RunCycle(ctx, "")
-	if got := m.PausedUntil().Sub(clk.t); got != 20*time.Minute {
+	e.search.err = &usecase.UpstreamError{Status: 429, RetryAfter: 20 * time.Minute}
+	e.monitor.RunCycle(ctx, 0)
+	if got := e.monitor.PausedUntil().Sub(e.clock.Now()); got != 20*time.Minute {
 		t.Fatalf("Retry-After'ga amal qilinmadi: %s", got)
 	}
-	got, _ := repo.Get(ctx, w.ID)
-	if got.LastStatus == "" || got.LastCheck.IsZero() {
+	if got, _ := e.watches.Get(ctx, w.ID); got.LastStatus == "" {
 		t.Fatal("xato holati yozilmadi")
 	}
 
-	calls := s.calls
-	m.RunCycle(ctx, "") // pauza davomida so'rov ketmasligi kerak
-	if s.calls != calls {
+	calls := e.search.calls
+	e.monitor.RunCycle(ctx, 0)
+	if e.search.calls != calls {
 		t.Fatal("pauza vaqtida so'rov yuborildi")
 	}
+	var pe *usecase.PausedError
+	if _, err := e.searchUC.Search(ctx, 1, domain.Route{From: "1", To: "2", Date: "2026-12-05"}); !errors.As(err, &pe) {
+		t.Fatalf("qo'lda qidiruv ham pauzada bo'lishi kerak: %v", err)
+	}
 
-	clk.t = clk.t.Add(21 * time.Minute)
-	s.err = nil
-	m.RunCycle(ctx, "")
-	if !m.PausedUntil().IsZero() {
+	e.clock.add(21 * time.Minute)
+	e.search.err = nil
+	e.monitor.RunCycle(ctx, 0)
+	if !e.monitor.PausedUntil().IsZero() {
 		t.Fatal("muvaffaqiyatdan keyin pauza tozalanishi kerak")
 	}
 }
 
 func TestMonitorExpiresPastWatches(t *testing.T) {
-	repo, s, _, clk, m, ws := setup()
+	e := newEnv(10, 0)
 	ctx := context.Background()
-	w := create(t, ws, "A", "2026-11-24")
+	w := mustCreate(t, e, e.user("A"), "2900000", "2900700", "2026-11-24")
 
-	clk.t = clk.t.Add(72 * time.Hour)
-	m.RunCycle(ctx, "")
-	got, _ := repo.Get(ctx, w.ID)
-	if got.Active || s.calls != 0 {
-		t.Fatalf("o'tgan sana to'xtatilishi va so'ralmasligi kerak: active=%v calls=%d", got.Active, s.calls)
-	}
-}
-
-func TestSearchServiceThrottle(t *testing.T) {
-	_, s, _, clk, m, _ := setup()
-	svc := usecase.NewSearchService(s, m, clk, 10*time.Second)
-	r := domain.Route{From: "1", To: "2", Date: "2026-12-05"}
-	ctx := context.Background()
-
-	if _, err := svc.Search(ctx, r); err != nil {
-		t.Fatal(err)
-	}
-	var te *usecase.ThrottledError
-	if _, err := svc.Search(ctx, r); !errors.As(err, &te) {
-		t.Fatalf("throttle kutilgan, %v", err)
-	}
-	clk.t = clk.t.Add(11 * time.Second)
-	if _, err := svc.Search(ctx, r); err != nil {
-		t.Fatal(err)
+	e.clock.add(72 * time.Hour)
+	e.monitor.RunCycle(ctx, 0)
+	got, _ := e.watches.Get(ctx, w.ID)
+	if got.Active || e.search.calls != 0 {
+		t.Fatalf("o'tgan sana to'xtatilishi va so'ralmasligi kerak: active=%v calls=%d", got.Active, e.search.calls)
 	}
 }

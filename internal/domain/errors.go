@@ -2,8 +2,11 @@ package domain
 
 import "errors"
 
-// ErrNotFound — kuzatuv topilmadi.
-var ErrNotFound = errors.New("kuzatuv topilmadi")
+var (
+	ErrNotFound     = errors.New("topilmadi")
+	ErrForbidden    = errors.New("bu amalga ruxsat yo'q")
+	ErrUnauthorized = errors.New("tizimga kirish kerak")
+)
 
 // ValidationError — foydalanuvchi kiritgan ma'lumot biznes qoidalariga mos emas.
 type ValidationError struct{ Msg string }

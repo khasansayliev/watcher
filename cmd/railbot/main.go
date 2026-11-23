@@ -14,11 +14,13 @@ import (
 	"time"
 
 	"github.com/khasansayliev/railbot/internal/adapter/clock"
+	"github.com/khasansayliev/railbot/internal/adapter/google"
+	"github.com/khasansayliev/railbot/internal/adapter/postgres"
 	"github.com/khasansayliev/railbot/internal/adapter/railway"
 	"github.com/khasansayliev/railbot/internal/adapter/stations"
-	"github.com/khasansayliev/railbot/internal/adapter/storage/jsonfile"
 	"github.com/khasansayliev/railbot/internal/adapter/telegram"
 	"github.com/khasansayliev/railbot/internal/config"
+	"github.com/khasansayliev/railbot/internal/delivery/telegrambot"
 	"github.com/khasansayliev/railbot/internal/delivery/webui"
 	"github.com/khasansayliev/railbot/internal/usecase"
 )
@@ -41,53 +43,78 @@ func run(log *slog.Logger) error {
 		log.Warn(w)
 	}
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	// --- adapterlar ---
-	clk := clock.New(cfg.TimeZone)
-	repo, err := jsonfile.Open(filepath.Join(cfg.DataDir, "watches.json"))
+	db, err := postgres.Open(ctx, dbDriver, cfg.DatabaseURL)
 	if err != nil {
 		return err
 	}
+	defer db.Close()
+	if err := postgres.Migrate(ctx, db); err != nil {
+		return err
+	}
+	users := postgres.NewUsers(db)
+	sessions := postgres.NewSessions(db)
+	codes := postgres.NewLinkCodes(db)
+	watchRepo := postgres.NewWatches(db)
+
+	clk := clock.New(cfg.TimeZone)
 	dir, err := stations.Load(cfg.StationsFile)
 	if err != nil {
 		return err
 	}
+	_ = os.MkdirAll(cfg.DataDir, 0o755)
 	rail := railway.New(railway.Config{
 		BaseURL:      cfg.RailwayBaseURL,
 		Lang:         cfg.RailwayLang,
 		ManualCookie: cfg.RailwayCookie,
 		RawDumpPath:  filepath.Join(cfg.DataDir, "last_response.json"),
 	})
-	tg := telegram.New(cfg.TelegramToken, rail.BuyURL(), dir)
+	tgClient := telegram.NewClient(cfg.TelegramToken)
+	notifier := telegram.NewNotifier(tgClient, rail.BuyURL(), dir)
+	idp := google.New(google.Config{
+		ClientID:     cfg.GoogleClientID,
+		ClientSecret: cfg.GoogleClientSecret,
+		RedirectURL:  cfg.GoogleRedirectURL(),
+	})
 
 	// --- usecase'lar ---
-	monitor := usecase.NewMonitor(repo, rail, tg, clk, usecase.MonitorConfig{
-		Interval:   cfg.PollInterval,
-		MaxBackoff: 30 * time.Minute,
-		GroupPause: 2 * time.Second,
+	monitor := usecase.NewMonitor(watchRepo, users, rail, notifier, clk, usecase.MonitorConfig{
+		Interval:            cfg.PollInterval,
+		MaxBackoff:          30 * time.Minute,
+		GroupPause:          2 * time.Second,
+		MaxSearchesPerCycle: cfg.MaxSearchesPerCycle,
 	}, log)
-	watches := usecase.NewWatchService(repo, tg, clk, monitor)
-	search := usecase.NewSearchService(rail, monitor, clk, cfg.ManualSearchGap)
+	auth := usecase.NewAuthService(idp, users, sessions, clk, cfg.SessionTTL)
+	watches := usecase.NewWatchService(watchRepo, users, clk, monitor, cfg.MaxWatchesPerUser)
+	search := usecase.NewSearchService(rail, monitor, clk, 10*time.Second, 2*time.Second)
+	tgService := usecase.NewTelegramService(users, codes, notifier, clk)
 
 	// --- delivery ---
 	ui, err := webui.New(webui.Deps{
+		Auth:          auth,
 		Watches:       watches,
 		Search:        search,
+		Telegram:      tgService,
 		Status:        monitor,
 		Raw:           rail,
 		Stations:      dir,
 		Clock:         clk,
-		TelegramOK:    tg.Enabled(),
-		DefaultChatID: cfg.DefaultChatID,
-		AuthUser:      cfg.UIUser,
-		AuthPassword:  cfg.UIPassword,
+		TelegramOK:    notifier.Enabled(),
+		MaxWatches:    cfg.MaxWatchesPerUser,
+		AdminEmails:   cfg.AdminEmails,
+		SecureCookies: cfg.SecureCookies(),
 	})
 	if err != nil {
 		return err
 	}
+	bot := telegrambot.New(tgClient, tgService, log)
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 	go monitor.Run(ctx)
+	go bot.Run(ctx)
+	go cleanupLoop(ctx, auth, log)
 
 	srv := &http.Server{Addr: cfg.Listen, Handler: ui.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
@@ -97,10 +124,27 @@ func run(log *slog.Logger) error {
 		_ = srv.Shutdown(shCtx)
 	}()
 
-	log.Info("UI ishga tushdi", "addr", "http://localhost"+cfg.Listen, "interval", cfg.PollInterval)
+	log.Info("ishga tushdi", "listen", cfg.Listen, "base_url", cfg.BaseURL, "interval", cfg.PollInterval)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
 	log.Info("to'xtatildi")
 	return nil
+}
+
+func cleanupLoop(ctx context.Context, auth *usecase.AuthService, log *slog.Logger) {
+	t := time.NewTicker(time.Hour)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			if n, err := auth.CleanupExpired(ctx); err != nil {
+				log.Warn("sessiyalarni tozalash", "err", err)
+			} else if n > 0 {
+				log.Info("eskirgan sessiyalar o'chirildi", "count", n)
+			}
+		}
+	}
 }

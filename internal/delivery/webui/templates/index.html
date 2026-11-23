@@ -1,4 +1,7 @@
 {{template "head" .}}
+{{if not .HasTG}}
+<div class="warn">Bildirishnomalar Telegram orqali keladi. Kuzatuv yaratishdan oldin <a href="/settings">Sozlamalar</a> sahifasida Telegram'ni ulang.</div>
+{{end}}
 <section class="card">
   <h2>Yangi kuzatuv</h2>
   <form method="post" action="/watches" class="grid">
@@ -11,9 +14,6 @@
     <label>Sana
       <input type="date" name="date" min="{{.Today}}" value="{{.Today}}" required>
     </label>
-    <label>Telegram chat ID
-      <input name="chat_id" value="{{.DefaultChatID}}" placeholder="123456789" required>
-    </label>
     <label>Maks. narx, so'm
       <input type="number" name="max_price" min="0" step="1000" placeholder="ixtiyoriy">
     </label>
@@ -21,34 +21,23 @@
       <input type="number" name="min_seats" min="1" max="50" value="1">
     </label>
     <label class="wide">Turi / klass filtri
-      <input name="car_type" placeholder="masalan: Afrosiyob, Купе, 2E (ixtiyoriy)">
+      <input name="car_type" maxlength="64" placeholder="masalan: Afrosiyob, Купе, 2E (ixtiyoriy)">
     </label>
-    <button type="submit">Kuzatuv yaratish</button>
+    <button type="submit"{{if not .HasTG}} disabled{{end}}>Kuzatuv yaratish</button>
   </form>
-
-  <details>
-    <summary>Telegram'ni tekshirish</summary>
-    <form method="post" action="/telegram/test" class="inline">
-      <input name="chat_id" value="{{.DefaultChatID}}" placeholder="chat ID" required>
-      <button type="submit">Test xabar yuborish</button>
-    </form>
-    <p class="hint">Chat ID'ni bilish uchun: botingizga /start yozing, so'ng @userinfobot ga yozing — u ID'ingizni aytadi.
-      Guruh uchun botni guruhga qo'shing (ID manfiy son bo'ladi, masalan -100…).</p>
-  </details>
 </section>
 
 <section class="card">
-  <h2>Kuzatuvlar ({{len .Watches}})</h2>
+  <h2>Mening kuzatuvlarim ({{len .Watches}}){{if .MaxWatches}} <small>· faol limit: {{.MaxWatches}}</small>{{end}}</h2>
   {{if .Watches}}
   <table>
-    <thead><tr><th>Yo'nalish</th><th>Sana</th><th>Filtr</th><th>Chat</th><th>Oxirgi tekshiruv</th><th>Joy</th><th></th></tr></thead>
+    <thead><tr><th>Yo'nalish</th><th>Sana</th><th>Filtr</th><th>Oxirgi tekshiruv</th><th>Joy</th><th></th></tr></thead>
     <tbody>
     {{range .Watches}}
       <tr class="{{if not .Active}}off{{end}}">
         <td><b>{{.RouteLabel}}</b>{{if not .Active}}<br><small>to'xtatilgan</small>{{end}}</td>
         <td>{{.Date}}</td>
         <td>{{.Filter}}</td>
-        <td><small>{{.ChatID}}</small></td>
         <td>{{.LastCheck}}{{if .LastStatus}}<br><small>{{.LastStatus}}</small>{{end}}
             {{if .LastNotified}}<br><small>Xabar: {{.LastNotified}}</small>{{end}}</td>
         <td>{{if .Matches}}<span class="badge ok">{{.Matches}} poyezd</span>{{else}}<span class="badge">yo'q</span>{{end}}</td>

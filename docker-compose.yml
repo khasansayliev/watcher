@@ -1,0 +1,32 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: railbot
+      POSTGRES_USER: railbot
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-railbot}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U railbot -d railbot"]
+      interval: 5s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://railbot:${POSTGRES_PASSWORD:-railbot}@db:5432/railbot?sslmode=disable
+    ports:
+      - "8080:8080"
+    volumes:
+      - appdata:/app/data
+
+volumes:
+  pgdata:
+  appdata:

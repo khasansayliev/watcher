@@ -10,10 +10,10 @@ import (
 
 // Watch — foydalanuvchining kuzatuvi (asosiy entity).
 type Watch struct {
-	ID        string
+	ID        int64
+	UserID    int64
 	Route     Route
 	Filter    Filter
-	ChatID    string
 	Active    bool
 	CreatedAt time.Time
 
@@ -27,18 +27,16 @@ type Watch struct {
 type NewWatchParams struct {
 	Route  Route
 	Filter Filter
-	ChatID string
 }
 
-// NewWatch biznes qoidalarini tekshirib yangi faol kuzatuv yaratadi.
-func NewWatch(p NewWatchParams, today string, now time.Time) (Watch, error) {
-	p.ChatID = strings.TrimSpace(p.ChatID)
+// NewWatch biznes qoidalarini tekshirib, foydalanuvchiga tegishli yangi faol kuzatuv yaratadi.
+func NewWatch(owner User, p NewWatchParams, today string, now time.Time) (Watch, error) {
 	p.Filter.CarType = strings.TrimSpace(p.Filter.CarType)
+	if !owner.HasTelegram() {
+		return Watch{}, NewValidationError("Avval Telegram'ni ulang (Sozlamalar sahifasi) — xabarlar o'sha yerga keladi")
+	}
 	if err := p.Route.Validate(today); err != nil {
 		return Watch{}, err
-	}
-	if p.ChatID == "" {
-		return Watch{}, NewValidationError("Telegram chat ID kiriting")
 	}
 	if p.Filter.MaxPrice < 0 {
 		return Watch{}, NewValidationError("Maks. narx manfiy bo'lmasin")
@@ -46,8 +44,13 @@ func NewWatch(p NewWatchParams, today string, now time.Time) (Watch, error) {
 	if p.Filter.MinSeats < 0 || p.Filter.MinSeats > 50 {
 		return Watch{}, NewValidationError("Joylar soni 1–50 oralig'ida bo'lsin")
 	}
-	return Watch{Route: p.Route, Filter: p.Filter, ChatID: p.ChatID, Active: true, CreatedAt: now}, nil
+	if len(p.Filter.CarType) > 64 {
+		return Watch{}, NewValidationError("Filtr juda uzun")
+	}
+	return Watch{UserID: owner.ID, Route: p.Route, Filter: p.Filter, Active: true, CreatedAt: now}, nil
 }
+
+func (w Watch) OwnedBy(userID int64) bool { return w.UserID == userID }
 
 func (w Watch) IsExpired(today string) bool { return w.Route.Date < today }
 

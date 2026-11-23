@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"math/rand/v2"
+	"sort"
 	"sync"
 	"time"
 
@@ -15,43 +16,46 @@ type MonitorConfig struct {
 	Interval   time.Duration // asosiy tekshiruv oralig'i
 	MaxBackoff time.Duration // xatolardan keyingi eng uzun pauza
 	GroupPause time.Duration // turli yo'nalishlar so'rovlari orasidagi pauza
+	// MaxSearchesPerCycle — bir siklda saytga yuboriladigan so'rovlar chegarasi.
+	// Ortgan yo'nalishlar keyingi siklga qoladi (eng uzoq tekshirilmaganlari birinchi).
+	MaxSearchesPerCycle int
 }
 
-// Monitor faol kuzatuvlarni davriy tekshiradi va mos joy chiqsa xabar beradi.
+// Monitor barcha foydalanuvchilarning faol kuzatuvlarini davriy tekshiradi.
+// Bir xil yo'nalish+sana qancha foydalanuvchida bo'lmasin, saytga bitta so'rov ketadi.
 type Monitor struct {
 	repo     WatchRepository
+	users    UserRepository
 	searcher TrainSearcher
 	notifier Notifier
 	clock    Clock
 	cfg      MonitorConfig
 	log      *slog.Logger
-	trigger  chan string
+	trigger  chan int64
 
-	running sync.Mutex // bir vaqtda bitta sikl
+	running sync.Mutex
 
 	mu          sync.Mutex
 	backoff     time.Duration
 	pausedUntil time.Time
 }
 
-func NewMonitor(repo WatchRepository, s TrainSearcher, n Notifier, c Clock, cfg MonitorConfig, log *slog.Logger) *Monitor {
+func NewMonitor(repo WatchRepository, users UserRepository, s TrainSearcher, n Notifier, c Clock, cfg MonitorConfig, log *slog.Logger) *Monitor {
 	if cfg.MaxBackoff == 0 {
 		cfg.MaxBackoff = 30 * time.Minute
 	}
-	return &Monitor{repo: repo, searcher: s, notifier: n, clock: c, cfg: cfg, log: log, trigger: make(chan string, 16)}
+	return &Monitor{repo: repo, users: users, searcher: s, notifier: n, clock: c, cfg: cfg, log: log, trigger: make(chan int64, 64)}
 }
 
 func (m *Monitor) Interval() time.Duration { return m.cfg.Interval }
 
-// PausedUntil — xatolar sababli tekshiruvlar qachongacha to'xtatilgan.
 func (m *Monitor) PausedUntil() time.Time {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.pausedUntil
 }
 
-// RequestCheck — bitta kuzatuvni navbatdan tashqari tekshirish so'rovi (bloklamaydi).
-func (m *Monitor) RequestCheck(id string) {
+func (m *Monitor) RequestCheck(id int64) {
 	select {
 	case m.trigger <- id:
 	default:
@@ -66,7 +70,7 @@ func (m *Monitor) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-timer.C:
-			m.RunCycle(ctx, "")
+			m.RunCycle(ctx, 0)
 			timer.Reset(jitter(m.cfg.Interval))
 		case id := <-m.trigger:
 			m.RunCycle(ctx, id)
@@ -74,8 +78,14 @@ func (m *Monitor) Run(ctx context.Context) {
 	}
 }
 
-// RunCycle bitta tekshiruv sikli. onlyID bo'sh bo'lmasa — faqat o'sha kuzatuv.
-func (m *Monitor) RunCycle(ctx context.Context, onlyID string) {
+type routeGroup struct {
+	route     domain.Route
+	watches   []domain.Watch
+	lastCheck time.Time // guruhdagi eng eski tekshiruv
+}
+
+// RunCycle bitta tekshiruv sikli. onlyID != 0 bo'lsa — faqat o'sha kuzatuv.
+func (m *Monitor) RunCycle(ctx context.Context, onlyID int64) {
 	m.running.Lock()
 	defer m.running.Unlock()
 
@@ -84,59 +94,97 @@ func (m *Monitor) RunCycle(ctx context.Context, onlyID string) {
 		return
 	}
 
-	watches, err := m.repo.List(ctx)
-	if err != nil {
-		m.log.Error("kuzatuvlarni o'qib bo'lmadi", "err", err)
-		return
+	var watches []domain.Watch
+	if onlyID != 0 {
+		w, err := m.repo.Get(ctx, onlyID)
+		if err != nil {
+			return
+		}
+		if w.Active {
+			watches = []domain.Watch{w}
+		}
+	} else {
+		var err error
+		if watches, err = m.repo.ListActive(ctx); err != nil {
+			m.log.Error("kuzatuvlarni o'qib bo'lmadi", "err", err)
+			return
+		}
 	}
 
-	today := m.clock.Today()
-	groups := map[string][]domain.Watch{}
-	var order []domain.Route
-	for _, w := range watches {
-		if (onlyID != "" && w.ID != onlyID) || !w.Active {
-			continue
-		}
-		if w.IsExpired(today) {
-			_, _ = m.repo.Update(ctx, w.ID, func(x *domain.Watch) { x.Expire() })
-			continue
-		}
-		// Bir xil yo'nalish+sana uchun bitta so'rov.
-		k := w.Route.Key()
-		if _, ok := groups[k]; !ok {
-			order = append(order, w.Route)
-		}
-		groups[k] = append(groups[k], w)
+	groups := m.group(ctx, watches)
+	if n := m.cfg.MaxSearchesPerCycle; n > 0 && len(groups) > n {
+		m.log.Info("so'rovlar chegarasi — qolganlari keyingi siklda", "routes", len(groups), "limit", n)
+		groups = groups[:n]
 	}
 
-	for i, route := range order {
+	chats := map[int64]string{} // sikl ichida foydalanuvchi keshi
+	for i, g := range groups {
 		if i > 0 && !sleepCtx(ctx, m.cfg.GroupPause) {
 			return
 		}
-		trains, err := m.searcher.Search(ctx, route)
+		trains, err := m.searcher.Search(ctx, g.route)
 		now := m.clock.Now()
 		if err != nil {
 			d := m.fail(err)
-			m.log.Warn("qidiruv xatosi", "route", route.Key(), "err", err, "pause", d.Round(time.Second))
-			for _, w := range groups[route.Key()] {
+			m.log.Warn("qidiruv xatosi", "route", g.route.Key(), "err", err, "pause", d.Round(time.Second))
+			for _, w := range g.watches {
 				_, _ = m.repo.Update(ctx, w.ID, func(x *domain.Watch) { x.RecordFailure(now, err) })
 			}
 			return // qolganlari keyingi siklda — saytni qiynamaymiz
 		}
 		m.succeed()
-		for _, w := range groups[route.Key()] {
-			m.evaluate(ctx, w, trains, now)
+		for _, w := range g.watches {
+			m.evaluate(ctx, w, trains, now, chats)
 		}
 	}
 }
 
-func (m *Monitor) evaluate(ctx context.Context, w domain.Watch, trains []domain.Train, now time.Time) {
+// group muddati o'tganlarini to'xtatadi va qolganlarini yo'nalish bo'yicha guruhlaydi.
+// Eng uzoq tekshirilmagan yo'nalishlar birinchi turadi — chegara bo'lsa ham hech kim "och" qolmaydi.
+func (m *Monitor) group(ctx context.Context, watches []domain.Watch) []routeGroup {
+	today := m.clock.Today()
+	byKey := map[string]*routeGroup{}
+	for _, w := range watches {
+		if w.IsExpired(today) {
+			_, _ = m.repo.Update(ctx, w.ID, func(x *domain.Watch) { x.Expire() })
+			continue
+		}
+		g, ok := byKey[w.Route.Key()]
+		if !ok {
+			g = &routeGroup{route: w.Route, lastCheck: w.LastCheck}
+			byKey[w.Route.Key()] = g
+		}
+		g.watches = append(g.watches, w)
+		if w.LastCheck.Before(g.lastCheck) {
+			g.lastCheck = w.LastCheck
+		}
+	}
+	out := make([]routeGroup, 0, len(byKey))
+	for _, g := range byKey {
+		out = append(out, *g)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].lastCheck.Before(out[j].lastCheck) })
+	return out
+}
+
+func (m *Monitor) evaluate(ctx context.Context, w domain.Watch, trains []domain.Train, now time.Time, chats map[int64]string) {
 	matches, notify, sig := w.Evaluate(trains)
 	var nerr error
 	if notify {
-		nerr = m.notifier.NotifyAvailability(ctx, w.ChatID, w.Route, matches)
+		chat, ok := chats[w.UserID]
+		if !ok {
+			if u, err := m.users.Get(ctx, w.UserID); err == nil {
+				chat = u.TelegramChatID
+			}
+			chats[w.UserID] = chat
+		}
+		if chat == "" {
+			nerr = errors.New("Telegram ulanmagan")
+		} else {
+			nerr = m.notifier.NotifyAvailability(ctx, chat, w.Route, matches)
+		}
 		if nerr != nil {
-			m.log.Warn("xabar yuborilmadi", "watch", w.ID, "err", nerr)
+			m.log.Warn("xabar yuborilmadi", "watch", w.ID, "user", w.UserID, "err", nerr)
 		}
 	}
 	_, _ = m.repo.Update(ctx, w.ID, func(x *domain.Watch) {
@@ -171,7 +219,6 @@ func (m *Monitor) succeed() {
 	m.mu.Unlock()
 }
 
-// jitter: ±10% — so'rovlar bir daqiqaga yopishib qolmasin.
 func jitter(d time.Duration) time.Duration {
 	if d <= 0 {
 		return d

@@ -1,107 +1,118 @@
 # 🚆 railbot — O'zbekiston temir yo'llari bilet kuzatuvchisi
 
-Yo'nalish va sana tanlab kuzatuv yaratasiz. Servis vaqti-vaqti bilan bo'sh joylarni tekshiradi
-va mos joy chiqsa Telegram'ga xabar yuboradi. Sotib olish rasmiy saytda qilinadi.
+Ko'p foydalanuvchili platforma. Foydalanuvchi Google orqali kiradi, Telegram'ini ulaydi, so'ng yo'nalish va sana
+bo'yicha kuzatuv yaratadi. Bo'sh joy chiqqanda Telegram'ga xabar keladi. Sotib olish rasmiy saytda qilinadi.
 
-Faqat Go standart kutubxonasi ishlatilgan: tashqi bog'liqlik ham, DB ham yo'q (kuzatuvlar `data/watches.json` faylida saqlanadi).
+## Imkoniyatlar
+
+- **Google OAuth** bilan kirish. Sessiya tokeni faqat HttpOnly cookie'da turadi, bazada uning sha256 xeshi saqlanadi.
+- **Telegram'ni bot orqali ulash**: "Ulash" tugmasi → `t.me/<bot>?start=<kod>` → Start.
+  Kod bir martalik va 15 daqiqa amal qiladi. Chat ID'ni qo'lda kiritish yo'q, shuning uchun birovning chatiga xabar yuborib bo'lmaydi.
+- Har bir foydalanuvchi **faqat o'z kuzatuvlarini** ko'radi va boshqaradi. Egalik usecase qatlamida tekshiriladi.
+- **Limitlar**: foydalanuvchiga N ta faol kuzatuv (`MAX_WATCHES_PER_USER`). Qo'lda qidiruv har bir foydalanuvchi uchun 10 soniyada bir marta.
+- **Temir yo'l saytini qiynamaslik**:
+  - bir xil yo'nalish+sana uchun qancha foydalanuvchi bo'lmasin, **bitta so'rov** yuboriladi;
+  - siklda ko'pi bilan `MAX_SEARCHES_PER_CYCLE` ta so'rov yuboriladi, eng uzoq tekshirilmagan yo'nalishlar birinchi navbatda;
+  - xato bo'lsa pauza qilinadi: oraliq har safar ×2, 30 daqiqagacha, `Retry-After`ga ham amal qilinadi.
 
 ## Arxitektura (Clean Architecture)
 
 ```
-cmd/railbot/main.go              composition root — hamma qatlamlar shu yerda ulanadi
+cmd/railbot/                     composition root (main.go) + PostgreSQL drayveri (driver.go)
 internal/
-  domain/                        entity va biznes qoidalari (Watch, Route, Train, Filter, MatchTrains)
+  domain/                        entity va biznes qoidalari: User, Identity, Watch, Route, Train, Filter
   usecase/                       stsenariylar + portlar (interfeyslar)
-    ports.go                     WatchRepository, TrainSearcher, Notifier, StationDirectory, Clock
-    monitor.go                   davriy tekshiruv, guruhlash, backoff
-    watch_service.go             kuzatuv yaratish/o'chirish/yoqish
-    search_service.go            qo'lda qidiruv (throttle bilan)
-  adapter/                       portlarning amalga oshirilishi
-    railway/                     eticket.railway.uz API (DTO → domain shu yerda)
-    telegram/                    Telegram Bot API
-    storage/jsonfile/            JSON fayl ombori
-    stations/                    stansiyalar ro'yxati
-    clock/                       haqiqiy vaqt (Asia/Tashkent)
-  delivery/webui/                HTTP UI: handler → usecase → presenter → shablon
-  config/                        env sozlamalar
-  pkg/textfmt/                   formatlash yordamchilari
+    ports.go                     WatchRepository, UserRepository, SessionRepository, LinkCodeRepository,
+                                 TrainSearcher, IdentityProvider, Notifier, StationDirectory, Clock
+    auth_service.go              Google login, sessiyalar
+    telegram_service.go          Telegram'ni akkauntga bog'lash
+    watch_service.go             kuzatuvlar (egalik + limit)
+    search_service.go            qo'lda qidiruv (cheklovlar bilan)
+    monitor.go                   davriy tekshiruv (guruhlash, chegara, backoff)
+  adapter/
+    postgres/                    database/sql repolar + ichki SQL migratsiyalar
+    google/                      OAuth 2.0 / OIDC (tashqi kutubxonasiz)
+    telegram/                    Bot API: xabar yuborish, getUpdates
+    railway/                     eticket.railway.uz API (DTO → domain)
+    stations/, clock/
+  delivery/
+    webui/                       HTTP: sessiya middleware → handler → usecase → presenter → shablon
+    telegrambot/                 Telegram'dan kiruvchi /start buyruqlari
+  config/, pkg/textfmt/
 ```
 
-Bog'liqlik qoidasi: `delivery → usecase → domain`. `domain` hech narsani import qilmaydi,
-`usecase` faqat `domain`ni biladi, adapterlar `usecase` portlarini amalga oshiradi.
-Masalan, JSON o'rniga Postgres kerak bo'lsa, `usecase.WatchRepository`ni amalga oshiruvchi yangi adapter yozib,
-`main.go`da almashtirish kifoya. Boshqa qatlamlar o'zgarmaydi.
+Bog'liqlik qoidasi: `delivery → usecase → domain`. `domain` hech qaysi qatlamni import qilmaydi, `usecase` faqat `domain`ni biladi.
+Tashqi kutubxonaga faqat `cmd/railbot/driver.go` bog'liq (pgx drayveri). Qolgan kod standart kutubxona bilan yozilgan.
 
-Testlar: `go test -race ./...`. Domen va usecase'lar fake portlar bilan, tarmoqsiz tekshiriladi.
+## Sozlash
 
-## Ishga tushirish
+### 1. Google OAuth
+
+Google Cloud Console → APIs & Services:
+1. **OAuth consent screen**: External, ilova nomi, email.
+2. **Credentials → Create credentials → OAuth client ID → Web application**.
+3. **Authorized redirect URIs** ga qo'shing: `https://sizning-domen/auth/google/callback`
+   (lokal test uchun: `http://localhost:8080/auth/google/callback`).
+4. Client ID va Secret'ni `.env` ga yozing.
+
+### 2. Telegram bot
+
+@BotFather → `/newbot` → tokenni `.env` dagi `TELEGRAM_BOT_TOKEN` ga yozing.
+Bot long polling bilan ishlaydi, shuning uchun bot uchun webhook o'rnatilmagan bo'lishi kerak.
+
+### 3. Ishga tushirish
 
 ```bash
-# Go 1.22+ kerak
-go build -o railbot ./cmd/railbot
-
-export TELEGRAM_BOT_TOKEN="123456:ABC..."     # @BotFather'dan
-export TELEGRAM_DEFAULT_CHAT_ID="123456789"   # ixtiyoriy, formada avtomatik to'ladi
-export UI_PASSWORD="kuchli-parol"             # serverga qo'ysangiz albatta bering
-./railbot
+cp .env.example .env      # qiymatlarni to'ldiring
+docker compose up -d --build
 # -> http://localhost:8080
 ```
 
-Docker bilan:
+Docker'siz:
 
 ```bash
-docker build -t railbot .
-docker run -d -p 8080:8080 -v $PWD/data:/app/data \
-  -e TELEGRAM_BOT_TOKEN=... -e UI_PASSWORD=... railbot
+go mod tidy               # pgx drayverini yuklaydi (bir marta; go.sum'ni commit qiling)
+export DATABASE_URL=postgres://user:pass@localhost:5432/railbot?sslmode=disable
+export BASE_URL=http://localhost:8080 GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... TELEGRAM_BOT_TOKEN=...
+go run ./cmd/railbot
 ```
 
-## Sozlamalar (env)
+Migratsiyalar ishga tushganda avtomatik qo'llanadi. Bir nechta instans bir vaqtda ishga tushsa ham xavfsiz: advisory lock ishlatiladi.
+
+### Sozlamalar (env)
 
 | O'zgaruvchi | Default | Izoh |
 |---|---|---|
-| `TELEGRAM_BOT_TOKEN` | — | Bot tokeni. Bo'lmasa xabar yuborilmaydi |
-| `TELEGRAM_DEFAULT_CHAT_ID` | — | Formadagi chat ID uchun default qiymat |
-| `POLL_INTERVAL` | `5m` | Tekshiruv oralig'i. Eng kami `2m` |
-| `LISTEN_ADDR` | `:8080` | UI manzili |
-| `DATA_DIR` | `./data` | `watches.json` va `last_response.json` shu yerda saqlanadi |
-| `UI_PASSWORD` / `UI_USER` | — / `admin` | UI uchun Basic Auth |
-| `RAILWAY_BASE` | `https://eticket.railway.uz` | API bazaviy manzili |
-| `RAILWAY_LANG` | `uz` | |
-| `RAILWAY_COOKIE` | — | Avtomatik token olinmasa: brauzerdagi cookie qatori (`XSRF-TOKEN=...; ...`) |
-| `STATIONS_FILE` | ichki `stations.json` | Stansiyalar ro'yxatini almashtirish uchun |
-| `TZ_NAME` | `Asia/Tashkent` | Vaqt zonasi |
+| `DATABASE_URL` | — (majburiy) | PostgreSQL ulanish satri |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | — (majburiy) | OAuth client |
+| `BASE_URL` | `http://localhost:8080` | Tashqi manzil. `https://` bo'lsa cookie'lar `Secure` bo'ladi |
+| `TELEGRAM_BOT_TOKEN` | — | Bo'lmasa xabarlar ham, Telegram ulash ham ishlamaydi |
+| `POLL_INTERVAL` | `5m` | Tekshiruv oralig'i (eng kami `2m`) |
+| `MAX_SEARCHES_PER_CYCLE` | `30` | Bir siklda saytga yuboriladigan so'rovlar chegarasi |
+| `MAX_WATCHES_PER_USER` | `10` | Foydalanuvchiga faol kuzatuvlar soni (`0` = cheksiz) |
+| `SESSION_TTL` | `720h` | Sessiya muddati |
+| `ADMIN_EMAILS` | — | Vergul bilan. Adminlarga "Oxirgi javob" (API debug) sahifasi ochiladi |
+| `RAILWAY_BASE`, `RAILWAY_LANG`, `RAILWAY_COOKIE` | | Temir yo'l API sozlamalari |
+| `STATIONS_FILE`, `TZ_NAME`, `LISTEN_ADDR`, `DATA_DIR` | | |
 
-## Telegram chat ID
+## Testlar
 
-1. Botingizga `/start` yozing (bot sizga birinchi bo'lib yoza olmaydi).
-2. @userinfobot ga yozsangiz, ID'ingizni aytadi.
-3. Guruh uchun: botni guruhga qo'shing. Guruh ID'si manfiy son bo'ladi (`-100...`).
-4. UI'dagi "Telegram'ni tekshirish" tugmasi orqali test xabar yuborib ko'ring.
+```bash
+go test -race ./...
+```
 
-## Qanday ishlaydi
-
-- Bir xil yo'nalish va sanadagi kuzatuvlar uchun **bitta so'rov** yuboriladi.
-- So'rovlar orasida 2–4 soniya pauza bor, oraliqqa ±10% tasodifiy og'ish qo'shiladi.
-- Xato kelsa (429, 403, 5xx, tarmoq), tekshiruv to'xtab turadi. Pauza oraliq → ×2 → … → 30 daqiqagacha oshadi, `Retry-After` header'iga ham amal qilinadi.
-- Xabar **faqat mos joylar to'plami o'zgarganda** yuboriladi: yangi poyezd yoki vagon turi chiqqanda. Har siklda takror yuborilmaydi. Joylar tugab, keyin qayta chiqsa, yana xabar keladi.
-- Sanasi o'tgan kuzatuvlar avtomatik to'xtatiladi.
-- Qo'lda qidiruv 10 soniyada bir martadan ko'p yuborilmaydi.
+Domen va usecase'lar soxta (fake) portlar bilan, tarmoqsiz va bazasiz tekshiriladi. Testlar qamrab olgan holatlar:
+login va sessiya muddati, tasdiqlanmagan email, egalik (A ning kuzatuvini B o'zgartira olmaydi), limitlar,
+Telegram kodining bir martaligi va muddati, bitta chatning ikki akkauntga bog'lanmasligi,
+bir xil yo'nalishga bitta so'rov, so'rovlar chegarasi va navbat, `Retry-After`, sanasi o'tgan kuzatuvlar.
 
 ## ⚠️ Birinchi ishga tushirishda tekshiring
 
-API rasmiy hujjatlashtirilmagan, shuning uchun ikki joy taxminga asoslangan:
-
-1. **Javob maydonlari** (`internal/adapter/railway/dto.go`). Bitta qidiruv qiling va UI'dagi
-   **Oxirgi javob** havolasini oching (yoki `data/last_response.json` faylini). Maydon nomlari boshqacha
-   bo'lsa, faqat o'sha bo'limdagi `json:"..."` teglarini moslang.
-2. **Stansiya kodlari** (`internal/adapter/stations/stations.json`). Toshkent `2900000` aniq. Qolganlari taxminiy: saytda qidiruv qilib,
-   DevTools → Network → `trains/list` so'rovidagi `depStationCode`/`arvStationCode` qiymatlari bilan solishtiring.
-
-Token avtomatik olinmasa (HTTP 403 yoki "XSRF-TOKEN olinmadi"), brauzerda saytga kiring.
-DevTools → Network → istalgan API so'rovi → `Cookie` header qiymatini `RAILWAY_COOKIE` ga bering.
+API rasmiy hujjatlashtirilmagan:
+1. **Javob maydonlari**: `internal/adapter/railway/dto.go`. Admin sifatida bitta qidiruv qiling va "Oxirgi javob" sahifasini oching.
+2. **Stansiya kodlari**: `internal/adapter/stations/stations.json`. Toshkent `2900000` aniq, qolganlarini saytdagi so'rovlar bilan solishtiring.
 
 ## Eslatma
 
-Bu ichki (rasmiy bo'lmagan) API. Format istalgan payt o'zgarishi mumkin.
-Oraliqni kamaytirmang: sayt baribir yuklamadan qiynalib turibdi, ortiqcha so'rov esa IP blokka olib keladi.
-Tijoriy foydalanish uchun O'ztemiryo'lyo'lovchi AJ bilan rasmiy shartnoma kerak (e-ticket@railway.uz).
+Bu ichki (rasmiy bo'lmagan) API. Format istalgan payt o'zgarishi mumkin, ko'p so'rov esa IP blokka olib keladi.
+Ochiq platforma sifatida ishga tushirishdan oldin O'ztemiryo'lyo'lovchi AJ bilan rasmiy kelishuv tavsiya etiladi (e-ticket@railway.uz).

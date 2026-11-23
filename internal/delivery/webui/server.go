@@ -4,7 +4,6 @@ package webui
 
 import (
 	"context"
-	"crypto/subtle"
 	"embed"
 	"html/template"
 	"net/http"
@@ -18,19 +17,31 @@ import (
 //go:embed templates/*.html
 var templatesFS embed.FS
 
-// Delivery qatlami kutadigan kirish portlari.
+// ---- Delivery qatlami kutadigan kirish portlari ----
+
+type AuthUseCase interface {
+	LoginURL(state string) string
+	Login(ctx context.Context, code string) (token string, user domain.User, expires time.Time, err error)
+	Authenticate(ctx context.Context, token string) (domain.User, error)
+	Logout(ctx context.Context, token string) error
+}
 
 type WatchUseCase interface {
-	Create(ctx context.Context, in usecase.CreateWatchInput) (domain.Watch, error)
-	List(ctx context.Context) ([]domain.Watch, error)
-	Delete(ctx context.Context, id string) error
-	Toggle(ctx context.Context, id string) (domain.Watch, error)
-	RequestCheck(ctx context.Context, id string) error
-	SendTest(ctx context.Context, chatID string) error
+	Create(ctx context.Context, userID int64, in usecase.CreateWatchInput) (domain.Watch, error)
+	List(ctx context.Context, userID int64) ([]domain.Watch, error)
+	Delete(ctx context.Context, userID, id int64) error
+	Toggle(ctx context.Context, userID, id int64) (domain.Watch, error)
+	RequestCheck(ctx context.Context, userID, id int64) error
 }
 
 type SearchUseCase interface {
-	Search(ctx context.Context, r domain.Route) ([]domain.Train, error)
+	Search(ctx context.Context, userID int64, r domain.Route) ([]domain.Train, error)
+}
+
+type TelegramUseCase interface {
+	StartLink(ctx context.Context, userID int64) (string, error)
+	Unlink(ctx context.Context, userID int64) error
+	SendTest(ctx context.Context, userID int64) error
 }
 
 type MonitorStatus interface {
@@ -43,16 +54,18 @@ type RawResponseSource interface {
 }
 
 type Deps struct {
+	Auth          AuthUseCase
 	Watches       WatchUseCase
 	Search        SearchUseCase
+	Telegram      TelegramUseCase
 	Status        MonitorStatus
 	Raw           RawResponseSource
 	Stations      usecase.StationDirectory
 	Clock         usecase.Clock
 	TelegramOK    bool
-	DefaultChatID string
-	AuthUser      string
-	AuthPassword  string // bo'sh bo'lsa auth o'chiq
+	MaxWatches    int
+	AdminEmails   []string
+	SecureCookies bool // BASE_URL https bo'lsa true
 }
 
 type Server struct {
@@ -71,34 +84,32 @@ func New(d Deps) (*Server, error) {
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /{$}", s.index)
-	mux.HandleFunc("POST /watches", s.createWatch)
-	mux.HandleFunc("POST /watches/{id}/delete", s.deleteWatch)
-	mux.HandleFunc("POST /watches/{id}/toggle", s.toggleWatch)
-	mux.HandleFunc("POST /watches/{id}/check", s.checkWatch)
-	mux.HandleFunc("GET /search", s.search)
-	mux.HandleFunc("POST /telegram/test", s.testTelegram)
-	mux.HandleFunc("GET /debug/last-response", s.lastResponse)
-	return s.basicAuth(sameOrigin(mux))
+
+	// ochiq
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
+	mux.HandleFunc("GET /login", s.loginPage)
+	mux.HandleFunc("GET /auth/google", s.googleStart)
+	mux.HandleFunc("GET /auth/google/callback", s.googleCallback)
+	mux.HandleFunc("POST /logout", s.logout)
+
+	// faqat kirganlar uchun
+	mux.Handle("GET /{$}", s.auth(s.dashboard))
+	mux.Handle("POST /watches", s.auth(s.createWatch))
+	mux.Handle("POST /watches/{id}/delete", s.auth(s.deleteWatch))
+	mux.Handle("POST /watches/{id}/toggle", s.auth(s.toggleWatch))
+	mux.Handle("POST /watches/{id}/check", s.auth(s.checkWatch))
+	mux.Handle("GET /search", s.auth(s.search))
+	mux.Handle("GET /settings", s.auth(s.settings))
+	mux.Handle("POST /settings/telegram/link", s.auth(s.telegramLink))
+	mux.Handle("POST /settings/telegram/unlink", s.auth(s.telegramUnlink))
+	mux.Handle("POST /settings/telegram/test", s.auth(s.telegramTest))
+	mux.Handle("GET /debug/last-response", s.auth(s.lastResponse))
+
+	return securityHeaders(sameOrigin(mux))
 }
 
-func (s *Server) basicAuth(next http.Handler) http.Handler {
-	if s.d.AuthPassword == "" {
-		return next
-	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		u, p, ok := r.BasicAuth()
-		if !ok || subtle.ConstantTimeCompare([]byte(u), []byte(s.d.AuthUser)) != 1 ||
-			subtle.ConstantTimeCompare([]byte(p), []byte(s.d.AuthPassword)) != 1 {
-			w.Header().Set("WWW-Authenticate", `Basic realm="railbot"`)
-			http.Error(w, "Kirish taqiqlangan", http.StatusUnauthorized)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
-// sameOrigin boshqa saytlardan yuborilgan POST so'rovlarni bloklaydi.
+// sameOrigin boshqa saytlardan yuborilgan POST so'rovlarni bloklaydi (CSRF).
+// Sessiya cookie'si SameSite=Lax bo'lgani bilan birga ikki qavat himoya beradi.
 func sameOrigin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
@@ -109,6 +120,16 @@ func sameOrigin(next http.Handler) http.Handler {
 				}
 			}
 		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("Referrer-Policy", "same-origin")
 		next.ServeHTTP(w, r)
 	})
 }
