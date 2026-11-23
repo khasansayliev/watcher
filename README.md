@@ -121,7 +121,6 @@ Migratsiyalar ishga tushganda avtomatik qo'llanadi.
 
 ```bash
 go test -race ./...
-python3 scripts/check_sql.py   # SQLite sxemasi va adapter so'rovlari
 ```
 
 Domen va usecase'lar soxta (fake) portlar bilan, tarmoqsiz va bazasiz tekshiriladi. Testlar qamrab olgan holatlar:
