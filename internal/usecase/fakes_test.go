@@ -304,7 +304,7 @@ func newEnv(maxPerUser, maxSearches int) *env {
 		idp:     &fakeIDP{},
 	}
 	e.sessions = &memSessions{m: map[string]session{}, u: e.users}
-	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	log := discardLog()
 	e.monitor = usecase.NewMonitor(e.watches, e.users, e.search, e.notif, e.clock,
 		usecase.MonitorConfig{Interval: 5 * time.Minute, MaxSearchesPerCycle: maxSearches}, log)
 	e.ws = usecase.NewWatchService(e.watches, e.users, e.clock, e.monitor, maxPerUser)
@@ -317,3 +317,5 @@ func newEnv(maxPerUser, maxSearches int) *env {
 func (e *env) user(chat string) domain.User {
 	return e.users.add(domain.User{Email: chat + "@example.com", TelegramChatID: chat})
 }
+
+func discardLog() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }

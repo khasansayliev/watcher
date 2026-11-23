@@ -13,7 +13,9 @@ bo'yicha kuzatuv yaratadi. Bo'sh joy chiqqanda Telegram'ga xabar keladi. Sotib o
 - **Temir yo'l saytini qiynamaslik**:
   - bir xil yo'nalish+sana uchun qancha foydalanuvchi bo'lmasin, **bitta so'rov** yuboriladi;
   - siklda ko'pi bilan `MAX_SEARCHES_PER_CYCLE` ta so'rov yuboriladi, eng uzoq tekshirilmagan yo'nalishlar birinchi navbatda;
-  - xato bo'lsa pauza qilinadi: oraliq har safar ×2, 30 daqiqagacha, `Retry-After`ga ham amal qilinadi.
+  - so'rovlar orasida 2–4 soniya pauza bor, shuning uchun saytga ~3 soniyada bittadan ko'p so'rov ketmaydi.
+    Keyingi sikl oldingisi tugagach `POLL_INTERVAL` o'tib boshlanadi: 1 yo'nalish ≈ 10 s, 30 yo'nalish ≈ 1,5–2 daqiqada bir;
+  - xato bo'lsa pauza qilinadi: kamida 1 daqiqa, keyin har safar ×2, 30 daqiqagacha, `Retry-After`ga ham amal qilinadi.
 
 ## Arxitektura (Clean Architecture)
 
@@ -87,7 +89,7 @@ Migratsiyalar ishga tushganda avtomatik qo'llanadi. Bir nechta instans bir vaqtd
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | — (majburiy) | OAuth client |
 | `BASE_URL` | `http://localhost:8080` | Tashqi manzil. `https://` bo'lsa cookie'lar `Secure` bo'ladi |
 | `TELEGRAM_BOT_TOKEN` | — | Bo'lmasa xabarlar ham, Telegram ulash ham ishlamaydi |
-| `POLL_INTERVAL` | `5m` | Tekshiruv oralig'i (eng kami `2m`) |
+| `POLL_INTERVAL` | `10s` | Sikllar orasidagi pauza (eng kami `10s`). Sikl o'zi ham vaqt oladi, pastga qarang |
 | `MAX_SEARCHES_PER_CYCLE` | `30` | Bir siklda saytga yuboriladigan so'rovlar chegarasi |
 | `MAX_WATCHES_PER_USER` | `10` | Foydalanuvchiga faol kuzatuvlar soni (`0` = cheksiz) |
 | `SESSION_TTL` | `720h` | Sessiya muddati |

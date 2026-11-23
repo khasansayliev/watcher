@@ -126,3 +126,23 @@ func TestMonitorExpiresPastWatches(t *testing.T) {
 		t.Fatalf("o'tgan sana to'xtatilishi va so'ralmasligi kerak: active=%v calls=%d", got.Active, e.search.calls)
 	}
 }
+
+func TestMonitorShortIntervalStillBacksOffOneMinute(t *testing.T) {
+	e := newEnv(10, 0)
+	ctx := context.Background()
+	e.monitor = usecase.NewMonitor(e.watches, e.users, e.search, e.notif, e.clock,
+		usecase.MonitorConfig{Interval: 10 * time.Second}, discardLog())
+	e.ws = usecase.NewWatchService(e.watches, e.users, e.clock, e.monitor, 10)
+	mustCreate(t, e, e.user("A"), "2900000", "2900700", "2026-12-05")
+
+	e.search.err = &usecase.UpstreamError{Status: 503}
+	e.monitor.RunCycle(ctx, 0)
+	if got := e.monitor.PausedUntil().Sub(e.clock.Now()); got != time.Minute {
+		t.Fatalf("10s oraliqda ham birinchi pauza 1 daqiqa bo'lishi kerak, %s", got)
+	}
+	e.clock.add(61 * time.Second)
+	e.monitor.RunCycle(ctx, 0)
+	if got := e.monitor.PausedUntil().Sub(e.clock.Now()); got != 2*time.Minute {
+		t.Fatalf("ikkinchi xatoda pauza ikki baravar oshishi kerak, %s", got)
+	}
+}

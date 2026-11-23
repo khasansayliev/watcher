@@ -12,6 +12,9 @@ import (
 	"github.com/khasansayliev/watcher/internal/domain"
 )
 
+// minBackoff — xato (429, 5xx, tarmoq) dan keyingi eng qisqa pauza.
+const minBackoff = time.Minute
+
 type MonitorConfig struct {
 	Interval   time.Duration // asosiy tekshiruv oralig'i
 	MaxBackoff time.Duration // xatolardan keyingi eng uzun pauza
@@ -196,7 +199,8 @@ func (m *Monitor) fail(err error) time.Duration {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.backoff == 0 {
-		m.backoff = m.cfg.Interval
+		// Oraliq qisqa bo'lsa ham xatodan keyin kamida 1 daqiqa kutamiz.
+		m.backoff = max(m.cfg.Interval, minBackoff)
 	} else {
 		m.backoff *= 2
 	}

@@ -11,7 +11,7 @@ import (
 )
 
 // MinPollInterval — saytga ortiqcha yuklama bermaslik uchun eng kichik oraliq.
-const MinPollInterval = 2 * time.Minute
+const MinPollInterval = 10 * time.Second
 
 type Config struct {
 	Listen   string
@@ -69,7 +69,7 @@ func Load() (Config, error) {
 	}
 
 	var err error
-	if c.PollInterval, err = duration("POLL_INTERVAL", "5m"); err != nil {
+	if c.PollInterval, err = duration("POLL_INTERVAL", "10s"); err != nil {
 		errs = append(errs, err)
 	} else if c.PollInterval < MinPollInterval {
 		c.Warnings = append(c.Warnings, fmt.Sprintf("POLL_INTERVAL %s juda kichik, %s ga oshirildi", c.PollInterval, MinPollInterval))
