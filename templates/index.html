@@ -1,0 +1,74 @@
+{{template "head" .}}
+<section class="card">
+  <h2>Yangi kuzatuv</h2>
+  <form method="post" action="/watches" class="grid">
+    <label>Qayerdan
+      <select name="from" required>{{range .Stations}}<option value="{{.Code}}">{{.Name}}</option>{{end}}</select>
+    </label>
+    <label>Qayerga
+      <select name="to" required>{{range $i, $s := .Stations}}<option value="{{$s.Code}}"{{if eq $i 1}} selected{{end}}>{{$s.Name}}</option>{{end}}</select>
+    </label>
+    <label>Sana
+      <input type="date" name="date" min="{{.Today}}" value="{{.Today}}" required>
+    </label>
+    <label>Telegram chat ID
+      <input name="chat_id" value="{{.DefaultChatID}}" placeholder="123456789" required>
+    </label>
+    <label>Maks. narx, so'm
+      <input type="number" name="max_price" min="0" step="1000" placeholder="ixtiyoriy">
+    </label>
+    <label>Kamida joy
+      <input type="number" name="min_seats" min="1" max="50" value="1">
+    </label>
+    <label class="wide">Turi / klass filtri
+      <input name="car_type" placeholder="masalan: Afrosiyob, Купе, 2E (ixtiyoriy)">
+    </label>
+    <button type="submit">Kuzatuv yaratish</button>
+  </form>
+
+  <details>
+    <summary>Telegram'ni tekshirish</summary>
+    <form method="post" action="/telegram/test" class="inline">
+      <input name="chat_id" value="{{.DefaultChatID}}" placeholder="chat ID" required>
+      <button type="submit">Test xabar yuborish</button>
+    </form>
+    <p class="hint">Chat ID'ni bilish uchun: botingizga /start yozing, so'ng @userinfobot ga yozing — u ID'ingizni aytadi.
+      Guruh uchun botni guruhga qo'shing (ID manfiy son bo'ladi, masalan -100…).</p>
+  </details>
+</section>
+
+<section class="card">
+  <h2>Kuzatuvlar ({{len .Watches}})</h2>
+  {{if .Watches}}
+  <table>
+    <thead><tr><th>Yo'nalish</th><th>Sana</th><th>Filtr</th><th>Chat</th><th>Oxirgi tekshiruv</th><th>Joy</th><th></th></tr></thead>
+    <tbody>
+    {{range .Watches}}
+      <tr class="{{if not .Active}}off{{end}}">
+        <td><b>{{station .From}} → {{station .To}}</b>{{if not .Active}}<br><small>to'xtatilgan</small>{{end}}</td>
+        <td>{{.Date}}</td>
+        <td>
+          {{if .MaxPrice}}≤ {{price .MaxPrice}} so'm<br>{{end}}
+          {{if gt .MinSeats 1}}≥ {{.MinSeats}} joy<br>{{end}}
+          {{if .CarType}}«{{.CarType}}»{{end}}
+          {{if and (not .MaxPrice) (le .MinSeats 1) (not .CarType)}}<span class="none">—</span>{{end}}
+        </td>
+        <td><small>{{.ChatID}}</small></td>
+        <td>{{ago .LastCheck}}{{if .LastStatus}}<br><small>{{.LastStatus}}</small>{{end}}
+            {{if not .LastNotified.IsZero}}<br><small>Xabar: {{ago .LastNotified}}</small>{{end}}</td>
+        <td>{{if .LastMatches}}<span class="badge ok">{{.LastMatches}} poyezd</span>{{else}}<span class="badge">yo'q</span>{{end}}</td>
+        <td class="actions">
+          <a href="/search?from={{.From}}&to={{.To}}&date={{.Date}}"><button class="ghost" type="button">Ko'rish</button></a>
+          <form method="post" action="/watches/{{.ID}}/check"><button class="ghost">Tekshir</button></form>
+          <form method="post" action="/watches/{{.ID}}/toggle"><button class="ghost">{{if .Active}}To'xtat{{else}}Yoq{{end}}</button></form>
+          <form method="post" action="/watches/{{.ID}}/delete" onsubmit="return confirm('O\'chirilsinmi?')"><button class="ghost danger">O'chir</button></form>
+        </td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="none">Hozircha kuzatuv yo'q. Yuqoridan yo'nalish tanlab yarating.</p>
+  {{end}}
+</section>
+{{template "foot" .}}

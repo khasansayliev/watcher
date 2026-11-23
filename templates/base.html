@@ -1,0 +1,61 @@
+{{define "head"}}<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} · Bilet kuzatuvchi</title>
+<style>
+  :root { --bg:#f5f6f8; --card:#fff; --ink:#1d2330; --muted:#6b7385; --line:#e3e6ec;
+          --accent:#1565c0; --ok:#1b7f3b; --okbg:#e6f4ea; --err:#b3261e; --errbg:#fdecea; --warnbg:#fff4e0; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--ink); }
+  header { background:var(--card); border-bottom:1px solid var(--line); padding:12px 20px; display:flex; gap:24px; align-items:center; }
+  header .logo { font-weight:700; color:var(--ink); text-decoration:none; }
+  header nav a { margin-right:16px; color:var(--accent); text-decoration:none; }
+  main { max-width:1100px; margin:20px auto; padding:0 16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:18px 20px; margin-bottom:18px; }
+  h2 { margin:0 0 14px; font-size:18px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:12px; align-items:end; }
+  .grid .wide { grid-column:span 2; }
+  label { display:flex; flex-direction:column; gap:4px; font-size:13px; color:var(--muted); }
+  input, select { font:inherit; padding:8px 10px; border:1px solid var(--line); border-radius:7px; background:#fff; color:var(--ink); }
+  button { font:inherit; padding:8px 14px; border:0; border-radius:7px; background:var(--accent); color:#fff; cursor:pointer; }
+  button.ghost { background:transparent; color:var(--accent); border:1px solid var(--line); padding:5px 10px; font-size:13px; }
+  button.danger { color:var(--err); }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding:9px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-size:12px; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); font-weight:600; }
+  tr.off td { color:var(--muted); }
+  small, .hint { color:var(--muted); font-size:12px; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:20px; font-size:12px; background:var(--line); color:var(--muted); }
+  .badge.ok { background:var(--okbg); color:var(--ok); font-weight:600; }
+  .flash { padding:10px 14px; border-radius:8px; margin-bottom:16px; background:var(--okbg); color:var(--ok); }
+  .flash.err { background:var(--errbg); color:var(--err); }
+  .warn { padding:10px 14px; border-radius:8px; margin-bottom:16px; background:var(--warnbg); }
+  .actions { white-space:nowrap; }
+  .actions form { display:inline; }
+  .inline { display:flex; gap:8px; margin-top:10px; }
+  details summary { cursor:pointer; color:var(--accent); margin-top:14px; }
+  .cars { margin:0; padding:0; list-style:none; }
+  .cars li { padding:2px 0; }
+  .seats { font-weight:600; color:var(--ok); }
+  .none { color:var(--muted); }
+  footer { text-align:center; color:var(--muted); font-size:12px; padding:20px; }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="logo">🚆 Bilet kuzatuvchi</a>
+  <nav><a href="/">Kuzatuvlar</a><a href="/search">Qidiruv</a><a href="/debug/last-response" target="_blank">Oxirgi javob</a></nav>
+</header>
+<main>
+{{if .Flash}}<div class="flash {{.FlashKind}}">{{.Flash}}</div>{{end}}
+{{if not .TelegramOK}}<div class="warn">TELEGRAM_BOT_TOKEN berilmagan — xabarlar yuborilmaydi.</div>{{end}}
+{{if .Paused}}<div class="warn">Sayt xato qaytardi — tekshiruvlar {{.PausedUntil}} gacha to'xtatilgan (avtomatik davom etadi).</div>{{end}}
+{{end}}
+
+{{define "foot"}}
+</main>
+<footer>Tekshiruv oralig'i: {{.Interval}} · Sotib olish faqat rasmiy saytda</footer>
+</body>
+</html>{{end}}

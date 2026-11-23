@@ -1,0 +1,51 @@
+{{template "head" .}}
+<section class="card">
+  <h2>Bilet qidirish</h2>
+  <form method="get" action="/search" class="grid">
+    <label>Qayerdan
+      <select name="from" required>{{$f := .From}}{{range .Stations}}<option value="{{.Code}}"{{if eq .Code $f}} selected{{end}}>{{.Name}}</option>{{end}}</select>
+    </label>
+    <label>Qayerga
+      <select name="to" required>{{$t := .To}}{{range .Stations}}<option value="{{.Code}}"{{if eq .Code $t}} selected{{end}}>{{.Name}}</option>{{end}}</select>
+    </label>
+    <label>Sana
+      <input type="date" name="date" min="{{.Today}}" value="{{.Date}}" required>
+    </label>
+    <button type="submit">Qidirish</button>
+  </form>
+</section>
+
+{{if .Searched}}
+<section class="card">
+  <h2>{{station .From}} → {{station .To}}, {{.Date}}</h2>
+  {{if .SearchErr}}
+    <div class="flash err">{{.SearchErr}}</div>
+  {{else if not .Trains}}
+    <p class="none">Bu sanaga poyezd topilmadi.</p>
+  {{else}}
+  <table>
+    <thead><tr><th>Poyezd</th><th>Jo'nash</th><th>Yetib borish</th><th>Yo'lda</th><th>Vagonlar: joy / narx</th></tr></thead>
+    <tbody>
+    {{range .Trains}}
+      <tr>
+        <td><b>{{.Number}}</b><br><small>{{trainLabel .}}</small></td>
+        <td>{{.Departure}}</td>
+        <td>{{.Arrival}}</td>
+        <td>{{.Duration}}</td>
+        <td>
+          {{if .Cars}}
+          <ul class="cars">
+            {{range .Cars}}
+            <li>{{carLabel .}}: {{if .FreeSeats}}<span class="seats">{{.FreeSeats}} joy</span>{{else}}<span class="none">joy yo'q</span>{{end}}{{if .MinPrice}} · {{price .MinPrice}} so'm{{end}}</li>
+            {{end}}
+          </ul>
+          {{else}}<span class="none">joy yo'q</span>{{end}}
+        </td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{end}}
+</section>
+{{end}}
+{{template "foot" .}}
