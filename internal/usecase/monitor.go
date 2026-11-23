@@ -15,6 +15,10 @@ import (
 // minBackoff — xato (429, 5xx, tarmoq) dan keyingi eng qisqa pauza.
 const minBackoff = time.Minute
 
+// dueSlack — monitor uyg'onishi ±10% tebranadi; oraliqqa 2 soniya qolgan yo'nalish ham
+// tekshiriladi, aks holda 10 soniyalik kuzatuv ba'zan 20 soniyada bir tekshirilardi.
+const dueSlack = 2 * time.Second
+
 type MonitorConfig struct {
 	// Tick — monitor qanchada bir uyg'onib, vaqti kelgan yo'nalishlarni qidiradi.
 	// Har bir yo'nalishning o'z oralig'i jadvaldan (PollingPolicy) olinadi.
@@ -188,7 +192,7 @@ func (m *Monitor) due(ctx context.Context, groups []routeGroup) []routeGroup {
 	now, today := m.clock.Now(), m.clock.Today()
 	out := groups[:0]
 	for _, g := range groups {
-		if g.lastCheck.IsZero() || now.Sub(g.lastCheck) >= policy.IntervalFor(g.route.Date, today) {
+		if g.lastCheck.IsZero() || now.Sub(g.lastCheck)+dueSlack >= policy.IntervalFor(g.route.Date, today) {
 			out = append(out, g)
 		}
 	}

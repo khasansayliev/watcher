@@ -188,3 +188,20 @@ func TestMonitorShortIntervalStillBacksOffOneMinute(t *testing.T) {
 		t.Fatalf("ikkinchi xatoda pauza ikki baravar oshishi kerak, %s", got)
 	}
 }
+
+func TestMonitorDueSlackForTenSecondTier(t *testing.T) {
+	e := newEnv(10, 0)
+	ctx := context.Background()
+	mustCreate(t, e, e.user("A"), "2900000", "2900700", "2026-11-24") // 10 s
+	e.monitor.RunCycle(ctx, 0)
+	e.clock.add(9 * time.Second) // jitter tufayli monitor biroz erta uyg'ondi
+	e.monitor.RunCycle(ctx, 0)
+	if e.search.calls != 2 {
+		t.Fatalf("9 soniyada ham tekshirilishi kerak (2 s yo'l qo'yish), so'rovlar: %d", e.search.calls)
+	}
+	e.clock.add(5 * time.Second)
+	e.monitor.RunCycle(ctx, 0)
+	if e.search.calls != 2 {
+		t.Fatal("5 soniyada qayta tekshirilmasligi kerak")
+	}
+}
