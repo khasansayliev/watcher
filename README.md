@@ -5,11 +5,40 @@ va mos joy chiqsa Telegram'ga xabar yuboradi. Sotib olish rasmiy saytda qilinadi
 
 Faqat Go standart kutubxonasi ishlatilgan: tashqi bog'liqlik ham, DB ham yo'q (kuzatuvlar `data/watches.json` faylida saqlanadi).
 
+## Arxitektura (Clean Architecture)
+
+```
+cmd/railbot/main.go              composition root — hamma qatlamlar shu yerda ulanadi
+internal/
+  domain/                        entity va biznes qoidalari (Watch, Route, Train, Filter, MatchTrains)
+  usecase/                       stsenariylar + portlar (interfeyslar)
+    ports.go                     WatchRepository, TrainSearcher, Notifier, StationDirectory, Clock
+    monitor.go                   davriy tekshiruv, guruhlash, backoff
+    watch_service.go             kuzatuv yaratish/o'chirish/yoqish
+    search_service.go            qo'lda qidiruv (throttle bilan)
+  adapter/                       portlarning amalga oshirilishi
+    railway/                     eticket.railway.uz API (DTO → domain shu yerda)
+    telegram/                    Telegram Bot API
+    storage/jsonfile/            JSON fayl ombori
+    stations/                    stansiyalar ro'yxati
+    clock/                       haqiqiy vaqt (Asia/Tashkent)
+  delivery/webui/                HTTP UI: handler → usecase → presenter → shablon
+  config/                        env sozlamalar
+  pkg/textfmt/                   formatlash yordamchilari
+```
+
+Bog'liqlik qoidasi: `delivery → usecase → domain`. `domain` hech narsani import qilmaydi,
+`usecase` faqat `domain`ni biladi, adapterlar `usecase` portlarini amalga oshiradi.
+Masalan, JSON o'rniga Postgres kerak bo'lsa, `usecase.WatchRepository`ni amalga oshiruvchi yangi adapter yozib,
+`main.go`da almashtirish kifoya. Boshqa qatlamlar o'zgarmaydi.
+
+Testlar: `go test -race ./...`. Domen va usecase'lar fake portlar bilan, tarmoqsiz tekshiriladi.
+
 ## Ishga tushirish
 
 ```bash
 # Go 1.22+ kerak
-go build -o railbot .
+go build -o railbot ./cmd/railbot
 
 export TELEGRAM_BOT_TOKEN="123456:ABC..."     # @BotFather'dan
 export TELEGRAM_DEFAULT_CHAT_ID="123456789"   # ixtiyoriy, formada avtomatik to'ladi
@@ -40,6 +69,7 @@ docker run -d -p 8080:8080 -v $PWD/data:/app/data \
 | `RAILWAY_LANG` | `uz` | |
 | `RAILWAY_COOKIE` | — | Avtomatik token olinmasa: brauzerdagi cookie qatori (`XSRF-TOKEN=...; ...`) |
 | `STATIONS_FILE` | ichki `stations.json` | Stansiyalar ro'yxatini almashtirish uchun |
+| `TZ_NAME` | `Asia/Tashkent` | Vaqt zonasi |
 
 ## Telegram chat ID
 
@@ -61,10 +91,10 @@ docker run -d -p 8080:8080 -v $PWD/data:/app/data \
 
 API rasmiy hujjatlashtirilmagan, shuning uchun ikki joy taxminga asoslangan:
 
-1. **Javob maydonlari** (`railway.go` → "Javobni o'qish" bo'limi). Bitta qidiruv qiling va UI'dagi
+1. **Javob maydonlari** (`internal/adapter/railway/dto.go`). Bitta qidiruv qiling va UI'dagi
    **Oxirgi javob** havolasini oching (yoki `data/last_response.json` faylini). Maydon nomlari boshqacha
    bo'lsa, faqat o'sha bo'limdagi `json:"..."` teglarini moslang.
-2. **Stansiya kodlari** (`stations.json`). Toshkent `2900000` aniq. Qolganlari taxminiy: saytda qidiruv qilib,
+2. **Stansiya kodlari** (`internal/adapter/stations/stations.json`). Toshkent `2900000` aniq. Qolganlari taxminiy: saytda qidiruv qilib,
    DevTools → Network → `trains/list` so'rovidagi `depStationCode`/`arvStationCode` qiymatlari bilan solishtiring.
 
 Token avtomatik olinmasa (HTTP 403 yoki "XSRF-TOKEN olinmadi"), brauzerda saytga kiring.

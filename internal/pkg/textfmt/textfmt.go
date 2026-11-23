@@ -1,4 +1,5 @@
-package main
+// Package textfmt — qatlamlardan mustaqil kichik formatlash yordamchilari.
+package textfmt
 
 import (
 	"fmt"
@@ -7,7 +8,8 @@ import (
 	"time"
 )
 
-func truncate(s string, n int) string {
+// Truncate satrni n ta belgigacha qisqartiradi.
+func Truncate(s string, n int) string {
 	r := []rune(s)
 	if len(r) <= n {
 		return s
@@ -15,8 +17,8 @@ func truncate(s string, n int) string {
 	return string(r[:n]) + "…"
 }
 
-// formatPrice: 270000 -> "270 000"
-func formatPrice(v float64) string {
+// Sum: 270000 -> "270 000"
+func Sum(v float64) string {
 	s := strconv.FormatInt(int64(v+0.5), 10)
 	var b strings.Builder
 	for i, ch := range s {
@@ -28,31 +30,12 @@ func formatPrice(v float64) string {
 	return b.String()
 }
 
-func trainLabel(t Train) string {
-	if t.Brand != "" {
-		return t.Brand
-	}
-	return t.Type
-}
-
-func carLabel(c Car) string {
-	if c.Class != "" && c.Type != "" {
-		return c.Type + " (" + c.Class + ")"
-	}
-	if c.Type != "" {
-		return c.Type
-	}
-	if c.Class != "" {
-		return c.Class
-	}
-	return "vagon"
-}
-
-func ago(t time.Time) string {
+// Ago — "5 daq oldin" ko'rinishidagi nisbiy vaqt.
+func Ago(t, now time.Time) string {
 	if t.IsZero() {
 		return "—"
 	}
-	d := time.Since(t)
+	d := now.Sub(t)
 	switch {
 	case d < time.Minute:
 		return "hozirgina"

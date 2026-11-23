@@ -45,20 +45,15 @@
     <tbody>
     {{range .Watches}}
       <tr class="{{if not .Active}}off{{end}}">
-        <td><b>{{station .From}} → {{station .To}}</b>{{if not .Active}}<br><small>to'xtatilgan</small>{{end}}</td>
+        <td><b>{{.RouteLabel}}</b>{{if not .Active}}<br><small>to'xtatilgan</small>{{end}}</td>
         <td>{{.Date}}</td>
-        <td>
-          {{if .MaxPrice}}≤ {{price .MaxPrice}} so'm<br>{{end}}
-          {{if gt .MinSeats 1}}≥ {{.MinSeats}} joy<br>{{end}}
-          {{if .CarType}}«{{.CarType}}»{{end}}
-          {{if and (not .MaxPrice) (le .MinSeats 1) (not .CarType)}}<span class="none">—</span>{{end}}
-        </td>
+        <td>{{.Filter}}</td>
         <td><small>{{.ChatID}}</small></td>
-        <td>{{ago .LastCheck}}{{if .LastStatus}}<br><small>{{.LastStatus}}</small>{{end}}
-            {{if not .LastNotified.IsZero}}<br><small>Xabar: {{ago .LastNotified}}</small>{{end}}</td>
-        <td>{{if .LastMatches}}<span class="badge ok">{{.LastMatches}} poyezd</span>{{else}}<span class="badge">yo'q</span>{{end}}</td>
+        <td>{{.LastCheck}}{{if .LastStatus}}<br><small>{{.LastStatus}}</small>{{end}}
+            {{if .LastNotified}}<br><small>Xabar: {{.LastNotified}}</small>{{end}}</td>
+        <td>{{if .Matches}}<span class="badge ok">{{.Matches}} poyezd</span>{{else}}<span class="badge">yo'q</span>{{end}}</td>
         <td class="actions">
-          <a href="/search?from={{.From}}&to={{.To}}&date={{.Date}}"><button class="ghost" type="button">Ko'rish</button></a>
+          <a href="{{.SearchURL}}"><button class="ghost" type="button">Ko'rish</button></a>
           <form method="post" action="/watches/{{.ID}}/check"><button class="ghost">Tekshir</button></form>
           <form method="post" action="/watches/{{.ID}}/toggle"><button class="ghost">{{if .Active}}To'xtat{{else}}Yoq{{end}}</button></form>
           <form method="post" action="/watches/{{.ID}}/delete" onsubmit="return confirm('O\'chirilsinmi?')"><button class="ghost danger">O'chir</button></form>
