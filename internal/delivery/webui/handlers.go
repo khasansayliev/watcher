@@ -116,6 +116,27 @@ func (s *Server) checkWatch(w http.ResponseWriter, r *http.Request) {
 	s.back(w, r, "/", "Tekshiruv navbatga qo'yildi — bir necha soniyadan keyin sahifani yangilang", "ok")
 }
 
+// watchLogs kuzatuvning tekshiruv loglarini req_time bo'yicha kamayish tartibida, sahifalab ko'rsatadi.
+func (s *Server) watchLogs(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	u := userFrom(r.Context())
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	lp, err := s.d.Watches.Logs(r.Context(), u.ID, id, page)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		s.fail(w, r, "/", err)
+		return
+	}
+	s.render(w, "logs.html", s.p.logs(s.layout("Loglar", r, u), lp))
+}
+
 func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 	u := userFrom(r.Context())
 	q := r.URL.Query()

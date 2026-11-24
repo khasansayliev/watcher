@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/khasansayliev/watcher/internal/domain"
 )
@@ -17,14 +18,15 @@ type CreateWatchInput = domain.NewWatchParams
 // WatchService — foydalanuvchi o'z kuzatuvlarini boshqaradi. Har bir amal egalikni tekshiradi.
 type WatchService struct {
 	repo      WatchRepository
+	logs      CheckLogRepository
 	users     UserRepository
 	clock     Clock
 	checker   CheckRequester
 	maxActive int
 }
 
-func NewWatchService(repo WatchRepository, users UserRepository, c Clock, checker CheckRequester, maxActivePerUser int) *WatchService {
-	return &WatchService{repo: repo, users: users, clock: c, checker: checker, maxActive: maxActivePerUser}
+func NewWatchService(repo WatchRepository, logs CheckLogRepository, users UserRepository, c Clock, checker CheckRequester, maxActivePerUser int) *WatchService {
+	return &WatchService{repo: repo, logs: logs, users: users, clock: c, checker: checker, maxActive: maxActivePerUser}
 }
 
 func (s *WatchService) Create(ctx context.Context, userID int64, in CreateWatchInput) (domain.Watch, error) {
@@ -110,4 +112,46 @@ func (s *WatchService) checkLimit(ctx context.Context, userID int64) error {
 		return domain.NewValidationError(fmt.Sprintf("Bir vaqtda ko'pi bilan %d ta faol kuzatuv bo'lishi mumkin", s.maxActive))
 	}
 	return nil
+}
+
+// LogsPerPage — loglar sahifasidagi yozuvlar soni.
+const LogsPerPage = 25
+
+// LogPage — kuzatuv loglarining bitta sahifasi (req_time bo'yicha kamayish tartibida).
+type LogPage struct {
+	Watch   domain.Watch
+	Logs    []domain.CheckLog
+	Page    int // 1 dan boshlanadi
+	Pages   int // kamida 1
+	Total   int
+	PerPage int
+}
+
+// Logs egasining kuzatuvi uchun loglar sahifasini qaytaradi. Chegaradan tashqari sahifa eng yaqin
+// to'g'ri sahifaga keltiriladi.
+func (s *WatchService) Logs(ctx context.Context, userID, id int64, page int) (LogPage, error) {
+	w, err := s.owned(ctx, userID, id)
+	if err != nil {
+		return LogPage{}, err
+	}
+	if page < 1 {
+		page = 1
+	}
+	logs, total, err := s.logs.ListByWatch(ctx, id, LogsPerPage, (page-1)*LogsPerPage)
+	if err != nil {
+		return LogPage{}, err
+	}
+	pages := max(1, (total+LogsPerPage-1)/LogsPerPage)
+	if page > pages { // oxirgi sahifadan keyin so'ralgan — oxirgisini ko'rsatamiz
+		page = pages
+		if logs, total, err = s.logs.ListByWatch(ctx, id, LogsPerPage, (page-1)*LogsPerPage); err != nil {
+			return LogPage{}, err
+		}
+	}
+	return LogPage{Watch: w, Logs: logs, Page: page, Pages: pages, Total: total, PerPage: LogsPerPage}, nil
+}
+
+// PruneLogs keepFor dan eski loglarni o'chiradi (baza cheksiz o'smasligi uchun).
+func (s *WatchService) PruneLogs(ctx context.Context, keepFor time.Duration) (int64, error) {
+	return s.logs.DeleteBefore(ctx, s.clock.Now().Add(-keepFor))
 }

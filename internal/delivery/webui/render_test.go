@@ -2,10 +2,13 @@ package webui
 
 import (
 	"bytes"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/khasansayliev/watcher/internal/domain"
+	"github.com/khasansayliev/watcher/internal/usecase"
 )
 
 func render(t *testing.T, name string, vm any) string {
@@ -63,3 +66,77 @@ func TestFilterLabelShowsWindow(t *testing.T) {
 		t.Fatal("filtrsiz — tire")
 	}
 }
+
+func TestPageLinks(t *testing.T) {
+	desc := func(ls []pageLink) string {
+		var b strings.Builder
+		for _, l := range ls {
+			switch {
+			case l.Gap:
+				b.WriteString("… ")
+			case l.Current:
+				b.WriteString("[" + strconv.Itoa(l.N) + "] ")
+			default:
+				b.WriteString(strconv.Itoa(l.N) + " ")
+			}
+		}
+		return strings.TrimSpace(b.String())
+	}
+	cases := []struct {
+		cur, pages int
+		want       string
+	}{
+		{1, 1, "[1]"},
+		{1, 3, "[1] 2 3"},
+		{1, 20, "[1] 2 3 … 20"},
+		{10, 20, "1 … 8 9 [10] 11 12 … 20"},
+		{20, 20, "1 … 18 19 [20]"},
+		{4, 20, "1 2 3 [4] 5 6 … 20"},
+	}
+	for _, c := range cases {
+		if got := desc(pageLinks(c.cur, c.pages)); got != c.want {
+			t.Errorf("pageLinks(%d,%d) = %q, kutilgan %q", c.cur, c.pages, got, c.want)
+		}
+	}
+}
+
+func TestLogsPageRenders(t *testing.T) {
+	p := presenter{stations: fakeStations{}, clock: fixedClock{}}
+	lp := usecase.LogPage{
+		Watch: domain.Watch{ID: 7, Route: domain.Route{From: "2900000", To: "2900800", Date: "2026-12-05"},
+			Filter: domain.Filter{Window: domain.TimeWindow{From: "08:00"}}},
+		Page: 2, Pages: 3, Total: 60, PerPage: 25,
+		Logs: []domain.CheckLog{
+			{ReqTime: time.Date(2026, 11, 24, 15, 0, 0, 0, time.UTC), Duration: 840 * time.Millisecond, OK: true, TrainCount: 2, MatchCount: 1, Notified: true,
+				Trains: []domain.TrainSnap{{Number: "764Ф", Label: "Afrosiyob", Departure: "08:37", Matched: true, Cars: []domain.CarSnap{{Label: "O'rindiqli", Seats: 12, Price: 300560}}}}},
+			{ReqTime: time.Date(2026, 11, 24, 14, 59, 0, 0, time.UTC), Duration: 15 * time.Second, Error: "tashqi API HTTP 504: Gateway"},
+		},
+	}
+	html := render(t, "logs.html", p.logs(layoutVM{User: &userVM{Name: "Ali"}}, lp))
+	for _, want := range []string{"Toshkent → Buxoro", "24.11.2026 15:00:00", "840 ms", "15.0 s", "HTTP 504", "yuborildi",
+		"764Ф", "12 joy", `href="?page=1"`, `href="?page=3"`, "26–27", "08:00 dan keyin"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("logs sahifasida %q yo'q", want)
+		}
+	}
+	if strings.Index(html, "15:00:00") > strings.Index(html, "14:59:00") {
+		t.Error("yangi yozuv birinchi bo'lishi kerak")
+	}
+}
+
+type fakeStations struct{}
+
+func (fakeStations) All() []domain.Station { return stations }
+func (fakeStations) Name(code string) string {
+	for _, s := range stations {
+		if s.Code == code {
+			return s.Name
+		}
+	}
+	return code
+}
+
+type fixedClock struct{}
+
+func (fixedClock) Now() time.Time { return time.Date(2026, 11, 24, 20, 0, 0, 0, time.UTC) }
+func (fixedClock) Today() string  { return "2026-11-24" }

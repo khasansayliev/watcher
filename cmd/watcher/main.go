@@ -58,6 +58,7 @@ func run(log *slog.Logger) error {
 	sessions := sqlite.NewSessions(db)
 	logins := sqlite.NewLoginRequests(db)
 	watchRepo := sqlite.NewWatches(db)
+	checkLogs := sqlite.NewCheckLogs(db)
 	pollingRepo := sqlite.NewPollingRules(db)
 
 	clk := clock.New(cfg.TimeZone)
@@ -76,14 +77,14 @@ func run(log *slog.Logger) error {
 	notifier := telegram.NewNotifier(tgClient, rail.BuyURL(), dir)
 
 	// --- usecase'lar ---
-	monitor := usecase.NewMonitor(watchRepo, pollingRepo, users, rail, notifier, clk, usecase.MonitorConfig{
+	monitor := usecase.NewMonitor(watchRepo, checkLogs, pollingRepo, users, rail, notifier, clk, usecase.MonitorConfig{
 		Tick:                10 * time.Second,
 		MaxBackoff:          30 * time.Minute,
 		GroupPause:          2 * time.Second,
 		MaxSearchesPerCycle: cfg.MaxSearchesPerCycle,
 	}, log)
 	auth := usecase.NewAuthService(users, logins, sessions, notifier, clk, cfg.SessionTTL)
-	watches := usecase.NewWatchService(watchRepo, users, clk, monitor, cfg.MaxWatchesPerUser)
+	watches := usecase.NewWatchService(watchRepo, checkLogs, users, clk, monitor, cfg.MaxWatchesPerUser)
 	search := usecase.NewSearchService(rail, monitor, clk, 10*time.Second, 2*time.Second)
 	tgService := usecase.NewTelegramService(users, notifier)
 	polling := usecase.NewPollingService(pollingRepo, watchRepo, clk, cfg.AdminTelegramIDs)
@@ -111,7 +112,7 @@ func run(log *slog.Logger) error {
 
 	go monitor.Run(ctx)
 	go bot.Run(ctx)
-	go cleanupLoop(ctx, auth, log)
+	go cleanupLoop(ctx, auth, watches, cfg.LogRetention, log)
 
 	srv := &http.Server{Addr: cfg.Listen, Handler: ui.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
@@ -129,7 +130,7 @@ func run(log *slog.Logger) error {
 	return nil
 }
 
-func cleanupLoop(ctx context.Context, auth *usecase.AuthService, log *slog.Logger) {
+func cleanupLoop(ctx context.Context, auth *usecase.AuthService, watches *usecase.WatchService, logRetention time.Duration, log *slog.Logger) {
 	t := time.NewTicker(time.Hour)
 	defer t.Stop()
 	for {
@@ -141,6 +142,13 @@ func cleanupLoop(ctx context.Context, auth *usecase.AuthService, log *slog.Logge
 				log.Warn("sessiyalarni tozalash", "err", err)
 			} else if n > 0 {
 				log.Info("eskirgan sessiyalar o'chirildi", "count", n)
+			}
+			if logRetention > 0 {
+				if n, err := watches.PruneLogs(ctx, logRetention); err != nil {
+					log.Warn("eski loglarni tozalash", "err", err)
+				} else if n > 0 {
+					log.Info("eski tekshiruv loglari o'chirildi", "count", n)
+				}
 			}
 		}
 	}

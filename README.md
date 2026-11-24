@@ -8,6 +8,7 @@ bo'yicha kuzatuv yaratadi. Bo'sh joy chiqqanda Telegram'ga xabar keladi. Sotib o
 - **Telegram orqali kirish va ro'yxatdan o'tish**: saytdagi tugma botni kod bilan ochadi, Start bosilgach akkaunt yaratiladi/topiladi va brauzer kiradi. Parol yo'q.
 - Sessiya tokeni faqat HttpOnly cookie'da turadi, bazada uning sha256 xeshi saqlanadi.
 - **Jo'nash vaqti oralig'i**: kuzatuv va qidiruvda «shu soatdan keyingilar», «shu soatgacha bo'lganlar», «shu ikki soat oralig'idagilar» yoki (bo'sh qoldirilsa) kun bo'yicha hammasi. Forma standart ravishda Toshkent → Buxoro.
+- **Tekshiruv loglari**: har bir kuzatuv uchun har bir so'rov yoziladi (yuborilgan vaqt, davomiyligi, natija yoki xato, nechta poyezd/mos, xabar yuborildimi, saytdan kelgan poyezdlar va joylar). Kuzatuvdagi «Loglar» tugmasi orqali `req_time` bo'yicha kamayish tartibida, 25 tadan sahifalab ko'riladi. Eski loglar avtomatik o'chadi (`LOG_RETENTION_DAYS`).
 - **Telegram bildirishnomalari**: akkaunt va chat bir xil, alohida "ulash" bosqichi yo'q.
   Kod bir martalik va 10 daqiqa amal qiladi, faqat uni ochgan brauzerga bog'langan. Chat ID'ni qo'lda kiritish yo'q, shuning uchun birovning chatiga xabar yuborib bo'lmaydi.
 - Har bir foydalanuvchi **faqat o'z kuzatuvlarini** ko'radi va boshqaradi. Egalik usecase qatlamida tekshiriladi.
@@ -105,6 +106,7 @@ Migratsiyalar ishga tushganda avtomatik qo'llanadi.
 | `MAX_SEARCHES_PER_CYCLE` | `30` | Bir siklda saytga yuboriladigan so'rovlar chegarasi |
 | `MAX_WATCHES_PER_USER` | `10` | Foydalanuvchiga faol kuzatuvlar soni (`0` = cheksiz) |
 | `SESSION_TTL` | `720h` | Sessiya muddati |
+| `LOG_RETENTION_DAYS` | `14` | Tekshiruv loglarini saqlash muddati, kun (`0` = o'chirmaslik). 10 soniyalik kuzatuv kuniga ~8 600 ta yozuv beradi |
 | `ADMIN_TELEGRAM_IDS` | — | Adminlarning Telegram ID'lari, vergul bilan (ID'ni @userinfobot dan bilib oling). Adminlar `/admin/polling` (oraliqlar jadvali, yuklama) va API debug sahifasini ko'radi |
 | `RAILWAY_BASE`, `RAILWAY_LANG`, `RAILWAY_COOKIE` | | Temir yo'l API sozlamalari |
 | `STATIONS_FILE`, `TZ_NAME`, `LISTEN_ADDR`, `DATA_DIR` | | |

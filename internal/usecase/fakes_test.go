@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"sort"
 	"sync"
 	"time"
 
@@ -216,6 +217,66 @@ func (r *memLogins) Claim(_ context.Context, code string, now time.Time) (int64,
 	return q.user, nil
 }
 
+type memLogs struct {
+	mu   sync.Mutex
+	logs []domain.CheckLog
+	n    int64
+}
+
+func (r *memLogs) Add(_ context.Context, l domain.CheckLog) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.n++
+	l.ID = r.n
+	r.logs = append(r.logs, l)
+	return nil
+}
+
+// ListByWatch req_time bo'yicha kamayish tartibida (teng bo'lsa id bo'yicha).
+func (r *memLogs) ListByWatch(_ context.Context, id int64, limit, offset int) ([]domain.CheckLog, int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var all []domain.CheckLog
+	for _, l := range r.logs {
+		if l.WatchID == id {
+			all = append(all, l)
+		}
+	}
+	sort.Slice(all, func(i, j int) bool {
+		if !all[i].ReqTime.Equal(all[j].ReqTime) {
+			return all[i].ReqTime.After(all[j].ReqTime)
+		}
+		return all[i].ID > all[j].ID
+	})
+	total := len(all)
+	if offset > total {
+		offset = total
+	}
+	end := min(offset+limit, total)
+	return all[offset:end], total, nil
+}
+
+func (r *memLogs) DeleteBefore(_ context.Context, t time.Time) (int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var keep []domain.CheckLog
+	var n int64
+	for _, l := range r.logs {
+		if l.ReqTime.Before(t) {
+			n++
+		} else {
+			keep = append(keep, l)
+		}
+	}
+	r.logs = keep
+	return n, nil
+}
+
+func (r *memLogs) forWatch(id int64) []domain.CheckLog {
+	l, _, _ := r.ListByWatch(context.Background(), id, 1000, 0)
+	return l
+}
+
 type memPolicy struct {
 	mu sync.Mutex
 	p  domain.PollingPolicy
@@ -303,6 +364,7 @@ func (c *fixedClock) add(d time.Duration) {
 // env — barcha usecase'lar fake portlar bilan ulangan.
 type env struct {
 	watches  *memWatches
+	logs     *memLogs
 	users    *memUsers
 	sessions *memSessions
 	logins   *memLogins
@@ -324,6 +386,7 @@ var sample = []domain.Train{{Number: "764Ф", Cars: []domain.Car{{Type: "Сид�
 func newEnv(maxPerUser, maxSearches int) *env {
 	e := &env{
 		watches: &memWatches{},
+		logs:    &memLogs{},
 		users:   newMemUsers(),
 		logins:  &memLogins{m: map[string]loginReq{}},
 		search:  &fakeSearcher{trains: sample},
@@ -333,9 +396,9 @@ func newEnv(maxPerUser, maxSearches int) *env {
 	}
 	e.sessions = &memSessions{m: map[string]session{}, u: e.users}
 	log := discardLog()
-	e.monitor = usecase.NewMonitor(e.watches, e.policy, e.users, e.search, e.notif, e.clock,
+	e.monitor = usecase.NewMonitor(e.watches, e.logs, e.policy, e.users, e.search, e.notif, e.clock,
 		usecase.MonitorConfig{Tick: 10 * time.Second, MaxSearchesPerCycle: maxSearches}, log)
-	e.ws = usecase.NewWatchService(e.watches, e.users, e.clock, e.monitor, maxPerUser)
+	e.ws = usecase.NewWatchService(e.watches, e.logs, e.users, e.clock, e.monitor, maxPerUser)
 	e.auth = usecase.NewAuthService(e.users, e.logins, e.sessions, e.notif, e.clock, 24*time.Hour)
 	e.tg = usecase.NewTelegramService(e.users, e.notif)
 	e.searchUC = usecase.NewSearchService(e.search, e.monitor, e.clock, 10*time.Second, 0)

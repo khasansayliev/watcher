@@ -29,6 +29,7 @@ type Config struct {
 	MaxSearchesPerCycle int
 	MaxWatchesPerUser   int
 	SessionTTL          time.Duration
+	LogRetention        time.Duration // tekshiruv loglarini saqlash muddati
 	AdminTelegramIDs    []string
 
 	Warnings []string
@@ -65,6 +66,11 @@ func Load() (Config, error) {
 	if c.SessionTTL, err = duration("SESSION_TTL", "720h"); err != nil {
 		errs = append(errs, err)
 	}
+	days, derr := integer("LOG_RETENTION_DAYS", 14)
+	if derr != nil {
+		errs = append(errs, derr)
+	}
+	c.LogRetention = time.Duration(days) * 24 * time.Hour
 	if c.MaxSearchesPerCycle, err = integer("MAX_SEARCHES_PER_CYCLE", 30); err != nil {
 		errs = append(errs, err)
 	}

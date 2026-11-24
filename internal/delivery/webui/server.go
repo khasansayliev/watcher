@@ -33,6 +33,7 @@ type WatchUseCase interface {
 	Delete(ctx context.Context, userID, id int64) error
 	Toggle(ctx context.Context, userID, id int64) (domain.Watch, error)
 	RequestCheck(ctx context.Context, userID, id int64) error
+	Logs(ctx context.Context, userID, id int64, page int) (usecase.LogPage, error)
 }
 
 type SearchUseCase interface {
@@ -103,6 +104,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /watches/{id}/delete", s.auth(s.deleteWatch))
 	mux.Handle("POST /watches/{id}/toggle", s.auth(s.toggleWatch))
 	mux.Handle("POST /watches/{id}/check", s.auth(s.checkWatch))
+	mux.Handle("GET /watches/{id}/logs", s.auth(s.watchLogs))
 	mux.Handle("GET /search", s.auth(s.search))
 	mux.Handle("GET /settings", s.auth(s.settings))
 	mux.Handle("POST /settings/telegram/test", s.auth(s.telegramTest))

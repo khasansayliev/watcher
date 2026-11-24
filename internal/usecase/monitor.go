@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/khasansayliev/watcher/internal/domain"
+	"github.com/khasansayliev/watcher/internal/pkg/textfmt"
 )
 
 // minBackoff — xato (429, 5xx, tarmoq) dan keyingi eng qisqa pauza.
@@ -35,6 +36,7 @@ type MonitorConfig struct {
 // Har bir yo'nalish jo'nashgacha qolgan kunga qarab jadvaldagi oraliqda tekshiriladi.
 type Monitor struct {
 	repo     WatchRepository
+	logs     CheckLogRepository
 	policies PollingRuleRepository
 	users    UserRepository
 	searcher TrainSearcher
@@ -51,14 +53,14 @@ type Monitor struct {
 	pausedUntil time.Time
 }
 
-func NewMonitor(repo WatchRepository, policies PollingRuleRepository, users UserRepository, s TrainSearcher, n Notifier, c Clock, cfg MonitorConfig, log *slog.Logger) *Monitor {
+func NewMonitor(repo WatchRepository, logs CheckLogRepository, policies PollingRuleRepository, users UserRepository, s TrainSearcher, n Notifier, c Clock, cfg MonitorConfig, log *slog.Logger) *Monitor {
 	if cfg.MaxBackoff == 0 {
 		cfg.MaxBackoff = 30 * time.Minute
 	}
 	if cfg.Tick == 0 {
 		cfg.Tick = domain.MinCheckInterval
 	}
-	return &Monitor{repo: repo, policies: policies, users: users, searcher: s, notifier: n, clock: c, cfg: cfg, log: log, trigger: make(chan int64, 64)}
+	return &Monitor{repo: repo, logs: logs, policies: policies, users: users, searcher: s, notifier: n, clock: c, cfg: cfg, log: log, trigger: make(chan int64, 64)}
 }
 
 func (m *Monitor) PausedUntil() time.Time {
@@ -137,19 +139,34 @@ func (m *Monitor) RunCycle(ctx context.Context, onlyID int64) {
 		if i > 0 && !sleepCtx(ctx, m.cfg.GroupPause) {
 			return
 		}
+		sent := m.clock.Now()
 		trains, err := m.searcher.Search(ctx, g.route)
 		now := m.clock.Now()
+		manual := onlyID != 0
 		if err != nil {
 			d := m.fail(err)
 			m.log.Warn("qidiruv xatosi", "route", g.route.Key(), "err", err, "pause", d.Round(time.Second))
 			for _, w := range g.watches {
 				_, _ = m.repo.Update(ctx, w.ID, func(x *domain.Watch) { x.RecordFailure(now, err) })
+				m.record(ctx, domain.CheckLog{
+					WatchID: w.ID, ReqTime: sent, Duration: now.Sub(sent), Manual: manual,
+					Error: textfmt.Truncate(err.Error(), 300),
+				})
 			}
 			return // qolganlari keyingi siklda — saytni qiynamaymiz
 		}
 		m.succeed()
 		for _, w := range g.watches {
-			m.evaluate(ctx, w, trains, now, chats)
+			res := m.evaluate(ctx, w, trains, now, chats)
+			l := domain.CheckLog{
+				WatchID: w.ID, ReqTime: sent, Duration: now.Sub(sent), Manual: manual, OK: true,
+				TrainCount: len(trains), MatchCount: len(res.matches), Notified: res.notified && res.notifyErr == nil,
+				Trains: domain.SnapshotTrains(trains, res.matches),
+			}
+			if res.notifyErr != nil {
+				l.NotifyErr = textfmt.Truncate(res.notifyErr.Error(), 300)
+			}
+			m.record(ctx, l)
 		}
 	}
 }
@@ -199,7 +216,21 @@ func (m *Monitor) due(ctx context.Context, groups []routeGroup) []routeGroup {
 	return out
 }
 
-func (m *Monitor) evaluate(ctx context.Context, w domain.Watch, trains []domain.Train, now time.Time, chats map[int64]string) {
+// record logni yozadi; log yozilmasa ham tekshiruv davom etadi.
+func (m *Monitor) record(ctx context.Context, l domain.CheckLog) {
+	if err := m.logs.Add(ctx, l); err != nil {
+		m.log.Warn("tekshiruv logini yozib bo'lmadi", "watch", l.WatchID, "err", err)
+	}
+}
+
+// evalResult — bitta kuzatuvni baholash natijasi (logga yoziladi).
+type evalResult struct {
+	matches   []domain.Match
+	notified  bool // xabar yuborishga urinildi
+	notifyErr error
+}
+
+func (m *Monitor) evaluate(ctx context.Context, w domain.Watch, trains []domain.Train, now time.Time, chats map[int64]string) evalResult {
 	matches, notify, sig := w.Evaluate(trains)
 	var nerr error
 	if notify {
@@ -222,6 +253,7 @@ func (m *Monitor) evaluate(ctx context.Context, w domain.Watch, trains []domain.
 	_, _ = m.repo.Update(ctx, w.ID, func(x *domain.Watch) {
 		x.RecordResult(now, len(trains), matches, sig, notify, nerr)
 	})
+	return evalResult{matches: matches, notified: notify, notifyErr: nerr}
 }
 
 func (m *Monitor) fail(err error) time.Duration {

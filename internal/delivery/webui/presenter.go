@@ -4,6 +4,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/khasansayliev/watcher/internal/domain"
 	"github.com/khasansayliev/watcher/internal/pkg/textfmt"
@@ -176,4 +177,100 @@ func searchQuery(w domain.Watch) url.Values {
 		q.Set("time_to", w.Filter.Window.To)
 	}
 	return q
+}
+
+type logVM struct {
+	Time, Duration         string
+	OK, Notified           bool
+	Manual                 bool
+	Error, NotifyErr       string
+	TrainCount, MatchCount int
+	Trains                 []logTrainVM
+}
+
+type logTrainVM struct {
+	Number, Label, Departure, Arrival string
+	Matched                           bool
+	Cars                              []carVM
+}
+
+type pageLink struct {
+	N       int
+	Current bool
+	Gap     bool // "…"
+}
+
+type logsVM struct {
+	layoutVM
+	WatchID            int64
+	RouteLabel, Date   string
+	Filter             string
+	Logs               []logVM
+	Page, Pages, Total int
+	From, To           int // ko'rsatilgan yozuvlar oralig'i (1 dan)
+	Prev, Next         int // 0 = yo'q
+	Links              []pageLink
+}
+
+func (p presenter) logs(l layoutVM, lp usecase.LogPage) logsVM {
+	loc := p.clock.Now().Location()
+	vm := logsVM{
+		layoutVM: l, WatchID: lp.Watch.ID, RouteLabel: p.routeLabel(lp.Watch.Route), Date: lp.Watch.Route.Date,
+		Filter: filterLabel(lp.Watch.Filter), Page: lp.Page, Pages: lp.Pages, Total: lp.Total,
+	}
+	for _, x := range lp.Logs {
+		lv := logVM{
+			Time: x.ReqTime.In(loc).Format("02.01.2006 15:04:05"), Duration: durationLabel(x.Duration),
+			OK: x.OK, Notified: x.Notified, Manual: x.Manual, Error: x.Error, NotifyErr: x.NotifyErr,
+			TrainCount: x.TrainCount, MatchCount: x.MatchCount,
+		}
+		for _, t := range x.Trains {
+			tv := logTrainVM{Number: t.Number, Label: t.Label, Departure: t.Departure, Arrival: t.Arrival, Matched: t.Matched}
+			for _, c := range t.Cars {
+				cv := carVM{Label: c.Label, FreeSeats: c.Seats}
+				if c.Price > 0 {
+					cv.Price = textfmt.Sum(c.Price) + " so'm"
+				}
+				tv.Cars = append(tv.Cars, cv)
+			}
+			lv.Trains = append(lv.Trains, tv)
+		}
+		vm.Logs = append(vm.Logs, lv)
+	}
+	if lp.Total > 0 {
+		vm.From = (lp.Page-1)*lp.PerPage + 1
+		vm.To = vm.From + len(lp.Logs) - 1
+	}
+	if lp.Page > 1 {
+		vm.Prev = lp.Page - 1
+	}
+	if lp.Page < lp.Pages {
+		vm.Next = lp.Page + 1
+	}
+	vm.Links = pageLinks(lp.Page, lp.Pages)
+	return vm
+}
+
+// pageLinks birinchi, oxirgi va joriy atrofidagi sahifalarni qaytaradi, orasiga "…" qo'yadi.
+func pageLinks(cur, pages int) []pageLink {
+	var out []pageLink
+	last := 0
+	for n := 1; n <= pages; n++ {
+		if n != 1 && n != pages && (n < cur-2 || n > cur+2) {
+			continue
+		}
+		if last != 0 && n-last > 1 {
+			out = append(out, pageLink{Gap: true})
+		}
+		out = append(out, pageLink{N: n, Current: n == cur})
+		last = n
+	}
+	return out
+}
+
+func durationLabel(d time.Duration) string {
+	if d < time.Second {
+		return strconv.FormatInt(d.Milliseconds(), 10) + " ms"
+	}
+	return strconv.FormatFloat(d.Seconds(), 'f', 1, 64) + " s"
 }

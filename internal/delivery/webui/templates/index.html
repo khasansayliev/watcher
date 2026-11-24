@@ -47,6 +47,7 @@
         <td>{{if .Matches}}<span class="badge ok">{{.Matches}} poyezd</span>{{else}}<span class="badge">yo'q</span>{{end}}</td>
         <td class="actions">
           <a href="{{.SearchURL}}"><button class="ghost" type="button">Ko'rish</button></a>
+          <a href="/watches/{{.ID}}/logs"><button class="ghost" type="button">Loglar</button></a>
           <form method="post" action="/watches/{{.ID}}/check"><button class="ghost">Tekshir</button></form>
           <form method="post" action="/watches/{{.ID}}/toggle"><button class="ghost">{{if .Active}}To'xtat{{else}}Yoq{{end}}</button></form>
           <form method="post" action="/watches/{{.ID}}/delete" onsubmit="return confirm('O\'chirilsinmi?')"><button class="ghost danger">O'chir</button></form>

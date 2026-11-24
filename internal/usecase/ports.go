@@ -53,6 +53,15 @@ type LoginRequestRepository interface {
 	Claim(ctx context.Context, code string, now time.Time) (userID int64, err error)
 }
 
+// CheckLogRepository — har bir tekshiruv so'rovining yozuvi (kuzatuv loglari).
+type CheckLogRepository interface {
+	Add(ctx context.Context, l domain.CheckLog) error
+	// ListByWatch req_time bo'yicha kamayish tartibida; jami yozuvlar sonini ham qaytaradi.
+	ListByWatch(ctx context.Context, watchID int64, limit, offset int) ([]domain.CheckLog, int, error)
+	// DeleteBefore t dan eski yozuvlarni o'chiradi.
+	DeleteBefore(ctx context.Context, t time.Time) (int64, error)
+}
+
 // PollingRuleRepository — tekshiruv oraliqlari jadvali (admin boshqaradi).
 type PollingRuleRepository interface {
 	Get(ctx context.Context) (domain.PollingPolicy, error)

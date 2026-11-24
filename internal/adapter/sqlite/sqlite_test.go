@@ -155,3 +155,78 @@ func TestWatchTimeWindowPersists(t *testing.T) {
 		t.Fatalf("oraliq bo'sh bo'lishi kerak: %+v", got2.Filter.Window)
 	}
 }
+
+func TestCheckLogsOrderPaginationAndCascade(t *testing.T) {
+	ctx := context.Background()
+	db := open(t)
+	if err := Migrate(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+	u, _ := NewUsers(db).UpsertByTelegram(ctx, domain.TelegramProfile{ID: "555"}, time.Now())
+	repo, logs := NewWatches(db), NewCheckLogs(db)
+	mk := func(to string) domain.Watch {
+		w, err := repo.Create(ctx, domain.Watch{UserID: u.ID, Route: domain.Route{From: "1", To: to, Date: "2026-12-05"}, Active: true, CreatedAt: time.Now()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return w
+	}
+	w, other := mk("2"), mk("3")
+
+	base := time.Now().Truncate(time.Millisecond)
+	for i := 0; i < 7; i++ {
+		l := domain.CheckLog{
+			WatchID: w.ID, ReqTime: base.Add(time.Duration(i) * time.Second), Duration: 1500 * time.Millisecond,
+			OK: i%2 == 0, Error: "", TrainCount: i, MatchCount: 1, Notified: i == 6, Manual: i == 0,
+			Trains: []domain.TrainSnap{{Number: "764Ф", Departure: "01.12.2026 08:37", Matched: true,
+				Cars: []domain.CarSnap{{Label: "O'rindiqli", Seats: 12, Price: 300560}}}},
+		}
+		if err := logs.Add(ctx, l); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = logs.Add(ctx, domain.CheckLog{WatchID: other.ID, ReqTime: base})
+
+	page1, total, err := logs.ListByWatch(ctx, w.ID, 3, 0)
+	if err != nil || total != 7 || len(page1) != 3 {
+		t.Fatalf("1-sahifa: total=%d len=%d err=%v", total, len(page1), err)
+	}
+	if page1[0].TrainCount != 6 || page1[1].TrainCount != 5 || page1[2].TrainCount != 4 {
+		t.Fatalf("req_time DESC tartibi: %d %d %d", page1[0].TrainCount, page1[1].TrainCount, page1[2].TrainCount)
+	}
+	if !page1[0].Notified || page1[0].Duration != 1500*time.Millisecond || !page1[0].ReqTime.Equal(base.Add(6*time.Second)) {
+		t.Fatalf("maydonlar saqlanmadi: %+v", page1[0])
+	}
+	if len(page1[0].Trains) != 1 || page1[0].Trains[0].Cars[0].Seats != 12 || !page1[0].Trains[0].Matched {
+		t.Fatalf("snapshot: %+v", page1[0].Trains)
+	}
+	page3, _, _ := logs.ListByWatch(ctx, w.ID, 3, 6)
+	if len(page3) != 1 || page3[0].TrainCount != 0 || !page3[0].Manual {
+		t.Fatalf("oxirgi sahifa: %+v", page3)
+	}
+	if _, total, _ := logs.ListByWatch(ctx, other.ID, 10, 0); total != 1 {
+		t.Fatal("boshqa kuzatuv loglari aralashmasligi kerak")
+	}
+
+	// Bir xil req_time bo'lsa, barqaror tartib (id bo'yicha kamayish).
+	for i := 0; i < 2; i++ {
+		_ = logs.Add(ctx, domain.CheckLog{WatchID: other.ID, ReqTime: base, TrainCount: 100 + i})
+	}
+	same, _, _ := logs.ListByWatch(ctx, other.ID, 10, 0)
+	if same[0].TrainCount != 101 || same[1].TrainCount != 100 {
+		t.Fatalf("teng vaqtda id DESC: %+v", same)
+	}
+
+	n, err := logs.DeleteBefore(ctx, base.Add(3*time.Second))
+	if err != nil || n != 3+3 { // w: 0,1,2; other: uchtasi base da
+		t.Fatalf("DeleteBefore: %d %v", n, err)
+	}
+
+	// Kuzatuv o'chirilsa, loglari ham o'chadi (ON DELETE CASCADE).
+	if err := repo.Delete(ctx, w.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, total, _ := logs.ListByWatch(ctx, w.ID, 10, 0); total != 0 {
+		t.Fatal("cascade ishlamadi")
+	}
+}
