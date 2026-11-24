@@ -3,13 +3,19 @@
   <h2>Yangi kuzatuv</h2>
   <form method="post" action="/watches" class="grid">
     <label>Qayerdan
-      <select name="from" required>{{range .Stations}}<option value="{{.Code}}">{{.Name}}</option>{{end}}</select>
+      <select name="from" required>{{$df := .DefaultFrom}}{{range .Stations}}<option value="{{.Code}}"{{if eq .Code $df}} selected{{end}}>{{.Name}}</option>{{end}}</select>
     </label>
     <label>Qayerga
-      <select name="to" required>{{range $i, $s := .Stations}}<option value="{{$s.Code}}"{{if eq $i 1}} selected{{end}}>{{$s.Name}}</option>{{end}}</select>
+      <select name="to" required>{{$dt := .DefaultTo}}{{range .Stations}}<option value="{{.Code}}"{{if eq .Code $dt}} selected{{end}}>{{.Name}}</option>{{end}}</select>
     </label>
     <label>Sana
       <input type="date" name="date" min="{{.Today}}" value="{{.Today}}" required>
+    </label>
+    <label>Jo'nash vaqti: dan
+      <input type="time" name="time_from">
+    </label>
+    <label>Jo'nash vaqti: gacha
+      <input type="time" name="time_to">
     </label>
     <label>Maks. narx, so'm
       <input type="number" name="max_price" min="0" step="1000" placeholder="ixtiyoriy">
@@ -20,6 +26,7 @@
     <label class="wide">Turi / klass filtri
       <input name="car_type" maxlength="64" placeholder="masalan: Afrosiyob, Купе, 2E (ixtiyoriy)">
     </label>
+    <p class="hint wide">Jo'nash vaqti ixtiyoriy: faqat «dan» — shu vaqtdan keyingi poyezdlar, faqat «gacha» — shu vaqtgacha bo'lganlar, ikkalasi — shu oraliqdagilar, bo'sh qoldirsangiz — kun bo'yicha hammasi.</p>
     <button type="submit">Kuzatuv yaratish</button>
   </form>
 </section>

@@ -129,3 +129,29 @@ func mustExec(t *testing.T, db *sql.DB, q string, args ...any) {
 		t.Fatal(err)
 	}
 }
+
+func TestWatchTimeWindowPersists(t *testing.T) {
+	ctx := context.Background()
+	db := open(t)
+	if err := Migrate(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+	u, _ := NewUsers(db).UpsertByTelegram(ctx, domain.TelegramProfile{ID: "555"}, time.Now())
+	repo := NewWatches(db)
+	w, err := repo.Create(ctx, domain.Watch{
+		UserID: u.ID, Route: domain.Route{From: "1", To: "2", Date: "2026-12-05"}, Active: true, CreatedAt: time.Now(),
+		Filter: domain.Filter{Window: domain.TimeWindow{From: "08:00", To: "18:30"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := repo.Get(ctx, w.ID)
+	if err != nil || got.Filter.Window.From != "08:00" || got.Filter.Window.To != "18:30" {
+		t.Fatalf("vaqt oralig'i saqlanmadi: %+v %v", got.Filter, err)
+	}
+	// Oraliqsiz kuzatuv bo'sh qiymat bilan saqlanadi (eski yozuvlar ham shunday).
+	w2, _ := repo.Create(ctx, domain.Watch{UserID: u.ID, Route: domain.Route{From: "1", To: "3", Date: "2026-12-05"}, Active: true, CreatedAt: time.Now()})
+	if got2, _ := repo.Get(ctx, w2.ID); !got2.Filter.Window.IsZero() {
+		t.Fatalf("oraliq bo'sh bo'lishi kerak: %+v", got2.Filter.Window)
+	}
+}

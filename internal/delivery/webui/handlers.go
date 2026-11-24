@@ -15,10 +15,12 @@ import (
 func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 	u := userFrom(r.Context())
 	vm := dashboardVM{
-		layoutVM:   s.layout("Kuzatuvlar", r, u),
-		Stations:   s.d.Stations.All(),
-		Today:      s.d.Clock.Today(),
-		MaxWatches: s.d.MaxWatches,
+		layoutVM:    s.layout("Kuzatuvlar", r, u),
+		DefaultFrom: defaultFrom,
+		DefaultTo:   defaultTo,
+		Stations:    s.d.Stations.All(),
+		Today:       s.d.Clock.Today(),
+		MaxWatches:  s.d.MaxWatches,
 	}
 	watches, err := s.d.Watches.List(r.Context(), u.ID)
 	if err != nil {
@@ -42,7 +44,10 @@ func (s *Server) createWatch(w http.ResponseWriter, r *http.Request) {
 			To:   strings.TrimSpace(r.FormValue("to")),
 			Date: strings.TrimSpace(r.FormValue("date")),
 		},
-		Filter: domain.Filter{CarType: r.FormValue("car_type")},
+		Filter: domain.Filter{
+			CarType: r.FormValue("car_type"),
+			Window:  domain.TimeWindow{From: r.FormValue("time_from"), To: r.FormValue("time_to")},
+		},
 	}
 	if v := r.FormValue("max_price"); v != "" {
 		p, err := strconv.ParseFloat(v, 64)
@@ -115,18 +120,27 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 	u := userFrom(r.Context())
 	q := r.URL.Query()
 	route := domain.Route{From: q.Get("from"), To: q.Get("to"), Date: q.Get("date")}
-	vm := searchVM{layoutVM: s.layout("Qidiruv", r, u), Stations: s.d.Stations.All(), Today: s.d.Clock.Today(), Route: route}
+	window := domain.TimeWindow{From: strings.TrimSpace(q.Get("time_from")), To: strings.TrimSpace(q.Get("time_to"))}
+	vm := searchVM{layoutVM: s.layout("Qidiruv", r, u), Stations: s.d.Stations.All(), Today: s.d.Clock.Today(), Route: route, Window: window}
 	if vm.Route.Date == "" {
 		vm.Route.Date = vm.Today
+	}
+	// Forma uchun standart yo'nalish; qidiruv faqat so'rovda aniq berilgan qiymatlar bilan ishlaydi.
+	if vm.Route.From == "" {
+		vm.Route.From = defaultFrom
+	}
+	if vm.Route.To == "" {
+		vm.Route.To = defaultTo
 	}
 	if route.From != "" && route.To != "" && route.Date != "" {
 		vm.Searched = true
 		vm.RouteLabel = s.p.routeLabel(route)
-		trains, err := s.d.Search.Search(r.Context(), u.ID, route)
-		if err != nil {
+		if err := window.Validate(); err != nil {
+			vm.Error = userMessage(err)
+		} else if trains, err := s.d.Search.Search(r.Context(), u.ID, route); err != nil {
 			vm.Error = userMessage(err)
 		} else {
-			vm.Trains = s.p.trains(trains)
+			vm.Trains = s.p.trains(window.FilterTrains(trains))
 		}
 	}
 	s.render(w, "search.html", vm)

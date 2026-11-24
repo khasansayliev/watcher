@@ -32,12 +32,19 @@ type loginWaitVM struct {
 	BotURL string
 }
 
+// Forma uchun standart yo'nalish: Toshkent → Buxoro (kodlar stations.json dagi bilan bir xil).
+const (
+	defaultFrom = "2900000"
+	defaultTo   = "2900800"
+)
+
 type dashboardVM struct {
 	layoutVM
-	Stations   []domain.Station
-	Today      string
-	MaxWatches int
-	Watches    []watchVM
+	DefaultFrom, DefaultTo string
+	Stations               []domain.Station
+	Today                  string
+	MaxWatches             int
+	Watches                []watchVM
 }
 
 type settingsVM struct {
@@ -57,6 +64,7 @@ type watchVM struct {
 
 type searchVM struct {
 	layoutVM
+	Window     domain.TimeWindow
 	Stations   []domain.Station
 	Today      string
 	Route      domain.Route
@@ -112,9 +120,7 @@ func (p presenter) watches(ws []domain.Watch, policy domain.PollingPolicy) []wat
 			Active:     w.Active,
 			Matches:    w.LastMatches,
 			Interval:   "har " + textfmt.Interval(policy.IntervalFor(w.Route.Date, today)),
-			SearchURL: "/search?" + url.Values{
-				"from": {w.Route.From}, "to": {w.Route.To}, "date": {w.Route.Date},
-			}.Encode(),
+			SearchURL:  "/search?" + searchQuery(w).Encode(),
 		}
 		if !w.LastNotified.IsZero() {
 			vm.LastNotified = textfmt.Ago(w.LastNotified, now)
@@ -134,6 +140,9 @@ func filterLabel(f domain.Filter) string {
 	}
 	if f.CarType != "" {
 		parts = append(parts, "«"+f.CarType+"»")
+	}
+	if l := f.Window.Label(); l != "" {
+		parts = append(parts, "🕒 "+l)
 	}
 	if len(parts) == 0 {
 		return "—"
@@ -155,4 +164,16 @@ func (p presenter) trains(ts []domain.Train) []trainVM {
 		out = append(out, vm)
 	}
 	return out
+}
+
+// searchQuery kuzatuv parametrlari bilan "Ko'rish" havolasi (vaqt oralig'i ham o'tadi).
+func searchQuery(w domain.Watch) url.Values {
+	q := url.Values{"from": {w.Route.From}, "to": {w.Route.To}, "date": {w.Route.Date}}
+	if w.Filter.Window.From != "" {
+		q.Set("time_from", w.Filter.Window.From)
+	}
+	if w.Filter.Window.To != "" {
+		q.Set("time_to", w.Filter.Window.To)
+	}
+	return q
 }

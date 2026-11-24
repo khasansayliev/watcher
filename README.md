@@ -7,6 +7,7 @@ bo'yicha kuzatuv yaratadi. Bo'sh joy chiqqanda Telegram'ga xabar keladi. Sotib o
 
 - **Telegram orqali kirish va ro'yxatdan o'tish**: saytdagi tugma botni kod bilan ochadi, Start bosilgach akkaunt yaratiladi/topiladi va brauzer kiradi. Parol yo'q.
 - Sessiya tokeni faqat HttpOnly cookie'da turadi, bazada uning sha256 xeshi saqlanadi.
+- **Jo'nash vaqti oralig'i**: kuzatuv va qidiruvda «shu soatdan keyingilar», «shu soatgacha bo'lganlar», «shu ikki soat oralig'idagilar» yoki (bo'sh qoldirilsa) kun bo'yicha hammasi. Forma standart ravishda Toshkent → Buxoro.
 - **Telegram bildirishnomalari**: akkaunt va chat bir xil, alohida "ulash" bosqichi yo'q.
   Kod bir martalik va 10 daqiqa amal qiladi, faqat uni ochgan brauzerga bog'langan. Chat ID'ni qo'lda kiritish yo'q, shuning uchun birovning chatiga xabar yuborib bo'lmaydi.
 - Har bir foydalanuvchi **faqat o'z kuzatuvlarini** ko'radi va boshqaradi. Egalik usecase qatlamida tekshiriladi.

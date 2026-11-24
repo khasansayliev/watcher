@@ -32,6 +32,7 @@ type NewWatchParams struct {
 // NewWatch biznes qoidalarini tekshirib, foydalanuvchiga tegishli yangi faol kuzatuv yaratadi.
 func NewWatch(owner User, p NewWatchParams, today string, now time.Time) (Watch, error) {
 	p.Filter.CarType = strings.TrimSpace(p.Filter.CarType)
+	p.Filter.Window = trimWindow(p.Filter.Window)
 	if !owner.HasTelegram() {
 		return Watch{}, NewValidationError("Telegram akkauntingiz topilmadi — qaytadan kiring")
 	}
@@ -43,6 +44,9 @@ func NewWatch(owner User, p NewWatchParams, today string, now time.Time) (Watch,
 	}
 	if p.Filter.MinSeats < 0 || p.Filter.MinSeats > 50 {
 		return Watch{}, NewValidationError("Joylar soni 1–50 oralig'ida bo'lsin")
+	}
+	if err := p.Filter.Window.Validate(); err != nil {
+		return Watch{}, err
 	}
 	if len(p.Filter.CarType) > 64 {
 		return Watch{}, NewValidationError("Filtr juda uzun")

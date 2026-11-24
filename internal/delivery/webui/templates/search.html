@@ -11,17 +11,23 @@
     <label>Sana
       <input type="date" name="date" min="{{.Today}}" value="{{.Route.Date}}" required>
     </label>
+    <label>Jo'nash vaqti: dan
+      <input type="time" name="time_from" value="{{.Window.From}}">
+    </label>
+    <label>Jo'nash vaqti: gacha
+      <input type="time" name="time_to" value="{{.Window.To}}">
+    </label>
     <button type="submit">Qidirish</button>
   </form>
 </section>
 
 {{if .Searched}}
 <section class="card">
-  <h2>{{.RouteLabel}}, {{.Route.Date}}</h2>
+  <h2>{{.RouteLabel}}, {{.Route.Date}}{{with .Window.Label}} <small>· 🕒 {{.}}</small>{{end}}</h2>
   {{if .Error}}
     <div class="flash err">{{.Error}}</div>
   {{else if not .Trains}}
-    <p class="none">Bu sanaga poyezd topilmadi.</p>
+    <p class="none">Bu sana{{if not .Window.IsZero}} va vaqt oralig'i{{end}} uchun poyezd topilmadi.</p>
   {{else}}
   <table>
     <thead><tr><th>Poyezd</th><th>Jo'nash</th><th>Yetib borish</th><th>Yo'lda</th><th>Vagonlar: joy / narx</th></tr></thead>
