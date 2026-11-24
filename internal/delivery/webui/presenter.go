@@ -23,6 +23,7 @@ type layoutVM struct {
 	User                    *userVM
 	Paused                  bool
 	PausedUntil             string
+	AdminTab                string // admin sahifalarida faol bo'lim: users | watches | polling
 }
 
 type loginVM struct {
@@ -42,6 +43,7 @@ const (
 type dashboardVM struct {
 	layoutVM
 	DefaultFrom, DefaultTo string
+	CreateBlocked          string // bo'sh emas bo'lsa — kuzatuv yaratib bo'lmaydi, sababi shu
 	Stations               []domain.Station
 	Today                  string
 	MaxWatches             int
@@ -60,6 +62,7 @@ type watchVM struct {
 	LastCheck, LastStatus, LastNotified string
 	SearchURL, Interval                 string
 	Active                              bool
+	AdminDisabled                       bool
 	Matches                             int
 }
 
@@ -112,16 +115,17 @@ func (p presenter) watches(ws []domain.Watch, policy domain.PollingPolicy) []wat
 	out := make([]watchVM, 0, len(ws))
 	for _, w := range ws {
 		vm := watchVM{
-			ID:         w.ID,
-			RouteLabel: p.routeLabel(w.Route),
-			Date:       w.Route.Date,
-			Filter:     filterLabel(w.Filter),
-			LastCheck:  textfmt.Ago(w.LastCheck, now),
-			LastStatus: w.LastStatus,
-			Active:     w.Active,
-			Matches:    w.LastMatches,
-			Interval:   "har " + textfmt.Interval(policy.IntervalFor(w.Route.Date, today)),
-			SearchURL:  "/search?" + searchQuery(w).Encode(),
+			ID:            w.ID,
+			RouteLabel:    p.routeLabel(w.Route),
+			Date:          w.Route.Date,
+			Filter:        filterLabel(w.Filter),
+			LastCheck:     textfmt.Ago(w.LastCheck, now),
+			LastStatus:    w.LastStatus,
+			Active:        w.Active,
+			AdminDisabled: w.AdminDisabled,
+			Matches:       w.LastMatches,
+			Interval:      "har " + textfmt.Interval(policy.IntervalFor(w.Route.Date, today)),
+			SearchURL:     "/search?" + searchQuery(w).Encode(),
 		}
 		if !w.LastNotified.IsZero() {
 			vm.LastNotified = textfmt.Ago(w.LastNotified, now)
@@ -197,7 +201,8 @@ type logTrainVM struct {
 type pageLink struct {
 	N       int
 	Current bool
-	Gap     bool // "…"
+	Gap     bool   // "…"
+	Href    string // admin pagerida to'ldiriladi
 }
 
 type logsVM struct {

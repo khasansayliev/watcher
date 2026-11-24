@@ -15,6 +15,12 @@ type CheckRequester interface {
 
 type CreateWatchInput = domain.NewWatchParams
 
+// CreationGate — foydalanuvchi hozir kuzatuv yarata oladimi (rejim va shaxsiy ruxsat).
+// Rad etilsa domain.ValidationError qaytaradi (foydalanuvchiga ko'rsatiladigan sabab bilan).
+type CreationGate interface {
+	CanCreate(ctx context.Context, u domain.User) error
+}
+
 // WatchService — foydalanuvchi o'z kuzatuvlarini boshqaradi. Har bir amal egalikni tekshiradi.
 type WatchService struct {
 	repo      WatchRepository
@@ -22,16 +28,20 @@ type WatchService struct {
 	users     UserRepository
 	clock     Clock
 	checker   CheckRequester
+	gate      CreationGate
 	maxActive int
 }
 
-func NewWatchService(repo WatchRepository, logs CheckLogRepository, users UserRepository, c Clock, checker CheckRequester, maxActivePerUser int) *WatchService {
-	return &WatchService{repo: repo, logs: logs, users: users, clock: c, checker: checker, maxActive: maxActivePerUser}
+func NewWatchService(repo WatchRepository, logs CheckLogRepository, users UserRepository, c Clock, checker CheckRequester, gate CreationGate, maxActivePerUser int) *WatchService {
+	return &WatchService{repo: repo, logs: logs, users: users, clock: c, checker: checker, gate: gate, maxActive: maxActivePerUser}
 }
 
 func (s *WatchService) Create(ctx context.Context, userID int64, in CreateWatchInput) (domain.Watch, error) {
 	owner, err := s.users.Get(ctx, userID)
 	if err != nil {
+		return domain.Watch{}, err
+	}
+	if err := s.gate.CanCreate(ctx, owner); err != nil {
 		return domain.Watch{}, err
 	}
 	w, err := domain.NewWatch(owner, in, s.clock.Today(), s.clock.Now())
@@ -47,6 +57,15 @@ func (s *WatchService) Create(ctx context.Context, userID int64, in CreateWatchI
 	}
 	s.checker.RequestCheck(saved.ID)
 	return saved, nil
+}
+
+// CanCreate dashboard uchun: nil — yaratish mumkin, aks holda sabab (ValidationError).
+func (s *WatchService) CanCreate(ctx context.Context, userID int64) error {
+	owner, err := s.users.Get(ctx, userID)
+	if err != nil {
+		return err
+	}
+	return s.gate.CanCreate(ctx, owner)
 }
 
 func (s *WatchService) List(ctx context.Context, userID int64) ([]domain.Watch, error) {
@@ -65,6 +84,9 @@ func (s *WatchService) Toggle(ctx context.Context, userID, id int64) (domain.Wat
 	if err != nil {
 		return domain.Watch{}, err
 	}
+	if w.AdminDisabled {
+		return domain.Watch{}, errAdminStopped
+	}
 	if !w.Active { // yoqilmoqchi — limitni tekshiramiz
 		if err := s.checkLimit(ctx, userID); err != nil {
 			return domain.Watch{}, err
@@ -80,9 +102,15 @@ func (s *WatchService) Toggle(ctx context.Context, userID, id int64) (domain.Wat
 	return w, nil
 }
 
+var errAdminStopped = domain.NewValidationError("Bu kuzatuv administrator tomonidan to'xtatilgan")
+
 func (s *WatchService) RequestCheck(ctx context.Context, userID, id int64) error {
-	if _, err := s.owned(ctx, userID, id); err != nil {
+	w, err := s.owned(ctx, userID, id)
+	if err != nil {
 		return err
+	}
+	if w.AdminDisabled {
+		return errAdminStopped
 	}
 	s.checker.RequestCheck(id)
 	return nil

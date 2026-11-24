@@ -34,6 +34,7 @@ type WatchUseCase interface {
 	Toggle(ctx context.Context, userID, id int64) (domain.Watch, error)
 	RequestCheck(ctx context.Context, userID, id int64) error
 	Logs(ctx context.Context, userID, id int64, page int) (usecase.LogPage, error)
+	CanCreate(ctx context.Context, userID int64) error
 }
 
 type SearchUseCase interface {
@@ -50,6 +51,15 @@ type PollingUseCase interface {
 	Stats(ctx context.Context, actor domain.User) ([]usecase.TierStats, error)
 }
 
+type AdminUseCase interface {
+	Users(ctx context.Context, actor domain.User, page int) (usecase.UserPage, error)
+	SetCanCreate(ctx context.Context, actor domain.User, userID int64, allow bool) error
+	SetUserDisabled(ctx context.Context, actor domain.User, userID int64, disabled bool) error
+	Watches(ctx context.Context, actor domain.User, userID int64, page int) (usecase.AdminWatchPage, error)
+	SetWatchDisabled(ctx context.Context, actor domain.User, watchID int64, disabled bool) error
+	SetCreationMode(ctx context.Context, actor domain.User, m domain.CreationMode) error
+}
+
 type MonitorStatus interface {
 	PausedUntil() time.Time
 }
@@ -64,6 +74,7 @@ type Deps struct {
 	Search        SearchUseCase
 	Telegram      TelegramUseCase
 	Polling       PollingUseCase
+	Admin         AdminUseCase
 	Status        MonitorStatus
 	Raw           RawResponseSource
 	Stations      usecase.StationDirectory
@@ -109,6 +120,12 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /settings", s.auth(s.settings))
 	mux.Handle("POST /settings/telegram/test", s.auth(s.telegramTest))
 	mux.Handle("GET /debug/last-response", s.auth(s.lastResponse))
+	mux.Handle("GET /admin/users", s.auth(s.adminUsers))
+	mux.Handle("POST /admin/users/{id}/creation", s.auth(s.adminUserCreation))
+	mux.Handle("POST /admin/users/{id}/disabled", s.auth(s.adminUserDisabled))
+	mux.Handle("POST /admin/settings/creation", s.auth(s.adminCreationMode))
+	mux.Handle("GET /admin/watches", s.auth(s.adminWatches))
+	mux.Handle("POST /admin/watches/{id}/disabled", s.auth(s.adminWatchDisabled))
 	mux.Handle("GET /admin/polling", s.auth(s.adminPolling))
 	mux.Handle("POST /admin/polling", s.auth(s.adminPollingSave))
 

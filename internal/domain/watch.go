@@ -10,12 +10,14 @@ import (
 
 // Watch — foydalanuvchining kuzatuvi (asosiy entity).
 type Watch struct {
-	ID        int64
-	UserID    int64
-	Route     Route
-	Filter    Filter
-	Active    bool
-	CreatedAt time.Time
+	ID     int64
+	UserID int64
+	Route  Route
+	Filter Filter
+	Active bool
+	// AdminDisabled — admin to'xtatgan; foydalanuvchi uni o'zi qayta yoqa olmaydi.
+	AdminDisabled bool
+	CreatedAt     time.Time
 
 	LastCheck    time.Time
 	LastStatus   string
@@ -53,6 +55,9 @@ func NewWatch(owner User, p NewWatchParams, today string, now time.Time) (Watch,
 	}
 	return Watch{UserID: owner.ID, Route: p.Route, Filter: p.Filter, Active: true, CreatedAt: now}, nil
 }
+
+// Runnable — kuzatuv tekshirilishi kerakmi (foydalanuvchi ham, admin ham to'xtatmagan).
+func (w Watch) Runnable() bool { return w.Active && !w.AdminDisabled }
 
 func (w Watch) OwnedBy(userID int64) bool { return w.UserID == userID }
 

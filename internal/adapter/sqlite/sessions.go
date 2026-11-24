@@ -24,7 +24,7 @@ func (r *Sessions) Create(ctx context.Context, tokenHash []byte, userID int64, e
 
 func (r *Sessions) UserByToken(ctx context.Context, tokenHash []byte, now time.Time) (domain.User, error) {
 	u, err := scanUser(r.db.QueryRowContext(ctx, `
-		SELECT u.id, u.telegram_id, u.username, u.name, u.created_at
+		SELECT u.id, u.telegram_id, u.username, u.name, u.created_at, u.can_create, u.disabled
 		  FROM sessions s JOIN users u ON u.id = s.user_id
 		 WHERE s.token_hash = ?1 AND s.expires_at > ?2`, tokenHash, now.UnixMilli()))
 	if errors.Is(err, domain.ErrNotFound) {
@@ -48,6 +48,11 @@ func (r *Sessions) DeleteExpired(ctx context.Context, now time.Time) (int64, err
 		return n, err
 	}
 	return n, nil
+}
+
+func (r *Sessions) DeleteByUser(ctx context.Context, userID int64) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM sessions WHERE user_id = ?1`, userID)
+	return err
 }
 
 func (r *Sessions) DeleteByTelegram(ctx context.Context, telegramID string) error {

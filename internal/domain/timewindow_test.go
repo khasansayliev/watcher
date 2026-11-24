@@ -83,3 +83,30 @@ func TestNewWatchRejectsBadWindow(t *testing.T) {
 		t.Fatalf("bo'shliqlar kesilishi kerak: %+v %v", w.Filter.Window, err)
 	}
 }
+
+func TestSettingsCheckCreate(t *testing.T) {
+	plain, allowed := User{}, User{CanCreate: true}
+	cases := []struct {
+		mode  CreationMode
+		u     User
+		admin bool
+		ok    bool
+	}{
+		{CreationApproved, plain, false, false},
+		{CreationApproved, allowed, false, true},
+		{CreationApproved, plain, true, true},
+		{CreationAll, plain, false, true},
+		{CreationNone, allowed, false, false},
+		{CreationNone, plain, true, true},
+		{"", plain, false, false}, // noma'lum qiymat xavfsiz tomonga: ruxsatsiz
+	}
+	for i, c := range cases {
+		err := Settings{CreationMode: c.mode}.CheckCreate(c.u, c.admin)
+		if (err == nil) != c.ok {
+			t.Errorf("#%d %s admin=%v can=%v: err=%v, kutilgan ok=%v", i, c.mode, c.admin, c.u.CanCreate, err, c.ok)
+		}
+	}
+	if !DefaultSettings().CreationMode.Valid() || DefaultSettings().CreationMode != CreationApproved {
+		t.Fatal("standart rejim 'approved' bo'lishi kerak")
+	}
+}

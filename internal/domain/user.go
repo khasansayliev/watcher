@@ -15,6 +15,11 @@ type User struct {
 	Username       string // @username (bo'lmasligi mumkin)
 	Name           string
 	CreatedAt      time.Time
+
+	// CanCreate — admin kuzatuv yaratishga ruxsat bergan (yangi foydalanuvchida standart: yo'q).
+	CanCreate bool
+	// Disabled — admin akkauntni o'chirgan: kira olmaydi, kuzatuvlari tekshirilmaydi.
+	Disabled bool
 }
 
 func (u User) HasTelegram() bool { return u.TelegramChatID != "" }

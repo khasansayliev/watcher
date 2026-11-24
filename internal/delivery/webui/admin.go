@@ -59,7 +59,7 @@ func (s *Server) adminPolling(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vm := adminVM{layoutVM: s.layout("Admin · Tekshiruv oraliqlari", r, u), Capacity: practicalRequestsPerHour,
+	vm := adminVM{layoutVM: s.adminLayout("Admin · Tekshiruv oraliqlari", "polling", r, u), Capacity: practicalRequestsPerHour,
 		MinInterval: textfmt.Interval(domain.MinCheckInterval)}
 	for _, rule := range policy.Rules {
 		val, unit := splitInterval(rule.Interval)

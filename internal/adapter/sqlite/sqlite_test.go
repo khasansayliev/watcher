@@ -230,3 +230,145 @@ func TestCheckLogsOrderPaginationAndCascade(t *testing.T) {
 		t.Fatal("cascade ishlamadi")
 	}
 }
+
+// 0006: mavjud foydalanuvchilar kuzatuv yaratish ruxsatini saqlaydi, yangilari ruxsatsiz boshlaydi.
+func TestMigrationGrandfathersExistingUsers(t *testing.T) {
+	ctx := context.Background()
+	db := open(t)
+	if _, err := db.ExecContext(ctx, `CREATE TABLE schema_migrations (version TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range []string{"0001_init", "0002_polling_rules", "0003_telegram_auth", "0004_watch_time_window", "0005_watch_logs"} {
+		body, _ := migrationsFS.ReadFile("migrations/" + v + ".sql")
+		if _, err := db.ExecContext(ctx, string(body)); err != nil {
+			t.Fatalf("%s: %v", v, err)
+		}
+		db.ExecContext(ctx, `INSERT INTO schema_migrations VALUES (?1, 0)`, v)
+	}
+	mustExec(t, db, `INSERT INTO users (telegram_id, name, created_at, last_login_at) VALUES ('111', 'Eski', 1, 1)`)
+	if err := Migrate(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+	users := NewUsers(db)
+	old, _ := users.Get(ctx, 1)
+	if !old.CanCreate || old.Disabled {
+		t.Fatalf("eski foydalanuvchi ruxsatni saqlashi kerak: %+v", old)
+	}
+	fresh, err := users.UpsertByTelegram(ctx, domain.TelegramProfile{ID: "222"}, time.Now())
+	if err != nil || fresh.CanCreate || fresh.Disabled {
+		t.Fatalf("yangi foydalanuvchi ruxsatsiz boshlashi kerak: %+v %v", fresh, err)
+	}
+	// Qayta kirish ruxsat/holatni o'zgartirmaydi.
+	_ = users.SetCanCreate(ctx, fresh.ID, true)
+	again, _ := users.UpsertByTelegram(ctx, domain.TelegramProfile{ID: "222", Name: "Yangi"}, time.Now())
+	if !again.CanCreate || again.Name != "Yangi" {
+		t.Fatalf("upsert ruxsatni saqlashi kerak: %+v", again)
+	}
+	if s, _ := NewSettings(db).Get(ctx); s.CreationMode != domain.CreationApproved {
+		t.Fatalf("standart rejim: %+v", s)
+	}
+}
+
+func TestAdminQueries(t *testing.T) {
+	ctx := context.Background()
+	db := open(t)
+	if err := Migrate(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+	users, watches, sessions, settings := NewUsers(db), NewWatches(db), NewSessions(db), NewSettings(db)
+	now := time.Now()
+	a, _ := users.UpsertByTelegram(ctx, domain.TelegramProfile{ID: "1", Name: "A"}, now)
+	b, _ := users.UpsertByTelegram(ctx, domain.TelegramProfile{ID: "2", Name: "B"}, now.Add(time.Second))
+	mk := func(u domain.User, to string) domain.Watch {
+		w, err := watches.Create(ctx, domain.Watch{UserID: u.ID, Route: domain.Route{From: "1", To: to, Date: "2026-12-05"}, Active: true, CreatedAt: now})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return w
+	}
+	wa1, wa2, wb := mk(a, "2"), mk(a, "3"), mk(b, "4")
+
+	active := func() int { l, _ := watches.ListActive(ctx); return len(l) }
+	if active() != 3 {
+		t.Fatalf("faol: %d", active())
+	}
+	// admin to'xtatgan kuzatuv tekshirilmaydi va limitga kirmaydi
+	if _, err := watches.Update(ctx, wa1.ID, func(w *domain.Watch) { w.AdminDisabled = true }); err != nil {
+		t.Fatal(err)
+	}
+	if active() != 2 {
+		t.Fatalf("admin to'xtatgandan keyin: %d", active())
+	}
+	if n, _ := watches.CountActiveByUser(ctx, a.ID); n != 1 {
+		t.Fatalf("limit hisobi: %d", n)
+	}
+	// o'chirilgan foydalanuvchining kuzatuvlari tekshirilmaydi
+	if err := users.SetDisabled(ctx, b.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if active() != 1 {
+		t.Fatalf("foydalanuvchi o'chirilgandan keyin: %d", active())
+	}
+	_ = wa2
+	_ = wb
+
+	// sessiya o'chirilgan foydalanuvchini ham ko'rsatadi (rad etish usecase'da)
+	_ = sessions.Create(ctx, []byte("t"), b.ID, now.Add(time.Hour))
+	if u, err := sessions.UserByToken(ctx, []byte("t"), now); err != nil || !u.Disabled {
+		t.Fatalf("sessiya: %+v %v", u, err)
+	}
+	if err := sessions.DeleteByUser(ctx, b.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sessions.UserByToken(ctx, []byte("t"), now); !errors.Is(err, domain.ErrUnauthorized) {
+		t.Fatal("DeleteByUser sessiyani o'chirishi kerak")
+	}
+
+	list, total, err := users.List(ctx, 10, 0)
+	if err != nil || total != 2 || len(list) != 2 {
+		t.Fatalf("List: %d %v", total, err)
+	}
+	if list[0].ID != b.ID { // eng yangisi birinchi
+		t.Fatalf("tartib: %+v", list[0])
+	}
+	var sa domain.UserSummary
+	for _, x := range list {
+		if x.ID == a.ID {
+			sa = x
+		}
+	}
+	if sa.TotalWatches != 2 || sa.ActiveWatches != 1 {
+		t.Fatalf("A statistikasi (faol/jami) 1/2 bo'lishi kerak: %d/%d", sa.ActiveWatches, sa.TotalWatches)
+	}
+	if err := users.SetCanCreate(ctx, 999, true); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("noma'lum foydalanuvchi: %v", err)
+	}
+
+	all, total, err := watches.ListAll(ctx, 0, 2, 0)
+	if err != nil || total != 3 || len(all) != 2 {
+		t.Fatalf("ListAll: total=%d len=%d %v", total, len(all), err)
+	}
+	if all[0].ID != wb.ID || all[0].Owner.Name != "B" || !all[0].Owner.Disabled {
+		t.Fatalf("eng yangisi va egasi: %+v", all[0])
+	}
+	byA, total, _ := watches.ListAll(ctx, a.ID, 10, 0)
+	if total != 2 || len(byA) != 2 {
+		t.Fatalf("A kuzatuvlari: %d", total)
+	}
+	var adminOff bool
+	for _, x := range byA {
+		if x.ID == wa1.ID {
+			adminOff = x.AdminDisabled
+		}
+	}
+	if !adminOff {
+		t.Fatal("AdminDisabled ro'yxatda ko'rinishi kerak")
+	}
+
+	if err := settings.SetCreationMode(ctx, domain.CreationNone); err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := settings.Get(ctx); s.CreationMode != domain.CreationNone {
+		t.Fatalf("rejim saqlanmadi: %+v", s)
+	}
+}

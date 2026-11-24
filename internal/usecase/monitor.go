@@ -114,7 +114,7 @@ func (m *Monitor) RunCycle(ctx context.Context, onlyID int64) {
 		if err != nil {
 			return
 		}
-		if w.Active {
+		if w.Runnable() {
 			watches = []domain.Watch{w}
 		}
 	} else {

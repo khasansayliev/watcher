@@ -60,6 +60,7 @@ func run(log *slog.Logger) error {
 	watchRepo := sqlite.NewWatches(db)
 	checkLogs := sqlite.NewCheckLogs(db)
 	pollingRepo := sqlite.NewPollingRules(db)
+	settingsRepo := sqlite.NewSettings(db)
 
 	clk := clock.New(cfg.TimeZone)
 	dir, err := stations.Load(cfg.StationsFile)
@@ -84,7 +85,8 @@ func run(log *slog.Logger) error {
 		MaxSearchesPerCycle: cfg.MaxSearchesPerCycle,
 	}, log)
 	auth := usecase.NewAuthService(users, logins, sessions, notifier, clk, cfg.SessionTTL)
-	watches := usecase.NewWatchService(watchRepo, checkLogs, users, clk, monitor, cfg.MaxWatchesPerUser)
+	admin := usecase.NewAdminService(users, watchRepo, settingsRepo, sessions, cfg.AdminTelegramIDs)
+	watches := usecase.NewWatchService(watchRepo, checkLogs, users, clk, monitor, admin, cfg.MaxWatchesPerUser)
 	search := usecase.NewSearchService(rail, monitor, clk, 10*time.Second, 2*time.Second)
 	tgService := usecase.NewTelegramService(users, notifier)
 	polling := usecase.NewPollingService(pollingRepo, watchRepo, clk, cfg.AdminTelegramIDs)
@@ -96,6 +98,7 @@ func run(log *slog.Logger) error {
 		Search:        search,
 		Telegram:      tgService,
 		Polling:       polling,
+		Admin:         admin,
 		Status:        monitor,
 		Raw:           rail,
 		Stations:      dir,

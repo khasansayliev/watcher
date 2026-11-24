@@ -108,6 +108,9 @@ func (s *Server) loginWait(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Cache-Control", "no-store")
 		s.render(w, "login_wait.html", loginWaitVM{BotURL: link})
+	case errors.Is(err, domain.ErrForbidden):
+		clearLoginCookie(w, s.d.SecureCookies)
+		loginError(w, r, "Akkauntingiz administrator tomonidan o'chirilgan")
 	case errors.Is(err, domain.ErrNotFound):
 		clearLoginCookie(w, s.d.SecureCookies)
 		loginError(w, r, "Kirish havolasi eskirdi, qaytadan urinib ko'ring")

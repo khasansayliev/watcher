@@ -22,6 +22,8 @@ type WatchRepository interface {
 	// Update yozuvni atomar o'zgartiradi (o'qish-o'zgartirish-yozish bitta tranzaksiyada).
 	Update(ctx context.Context, id int64, fn func(*domain.Watch)) (domain.Watch, error)
 	Delete(ctx context.Context, id int64) error
+	// ListAll admin uchun: barcha kuzatuvlar (userID != 0 — faqat shu foydalanuvchiniki), eng yangisi birinchi.
+	ListAll(ctx context.Context, userID int64, limit, offset int) ([]domain.WatchWithOwner, int, error)
 }
 
 type UserRepository interface {
@@ -29,6 +31,16 @@ type UserRepository interface {
 	// yoki profilini yangilaydi (kirish).
 	UpsertByTelegram(ctx context.Context, p domain.TelegramProfile, now time.Time) (domain.User, error)
 	Get(ctx context.Context, id int64) (domain.User, error)
+	// List admin uchun: barcha foydalanuvchilar statistikasi bilan, eng yangisi birinchi.
+	List(ctx context.Context, limit, offset int) ([]domain.UserSummary, int, error)
+	SetCanCreate(ctx context.Context, id int64, allow bool) error
+	SetDisabled(ctx context.Context, id int64, disabled bool) error
+}
+
+// SettingsRepository — platforma sozlamalari (admin boshqaradi).
+type SettingsRepository interface {
+	Get(ctx context.Context) (domain.Settings, error)
+	SetCreationMode(ctx context.Context, m domain.CreationMode) error
 }
 
 type SessionRepository interface {
@@ -36,6 +48,8 @@ type SessionRepository interface {
 	// UserByToken amal qilayotgan sessiya egasini qaytaradi; bo'lmasa domain.ErrUnauthorized.
 	UserByToken(ctx context.Context, tokenHash []byte, now time.Time) (domain.User, error)
 	Delete(ctx context.Context, tokenHash []byte) error
+	// DeleteByUser foydalanuvchining barcha sessiyalarini o'chiradi (akkaunt o'chirilganda).
+	DeleteByUser(ctx context.Context, userID int64) error
 	// DeleteByTelegram foydalanuvchining barcha sessiyalarini o'chiradi.
 	DeleteByTelegram(ctx context.Context, telegramID string) error
 	// DeleteExpired eskirgan sessiyalar va kirish so'rovlarini o'chiradi.

@@ -68,6 +68,9 @@ func (s *AuthService) ConfirmLogin(ctx context.Context, code string, p domain.Te
 		}
 		return err
 	}
+	if user.Disabled { // brauzer PollLogin'da rad etiladi; bu yerda sababini aytamiz
+		return s.notifier.SendText(ctx, p.ID, "⛔ Akkauntingiz administrator tomonidan o'chirilgan. Kirish mumkin emas.")
+	}
 	return s.notifier.SendText(ctx, p.ID, "✅ Kirish tasdiqlandi, "+user.DisplayName()+". Saytga qayting — sahifa o'zi yangilanadi.\n\nBo'sh joy chiqsa xabar shu chatga keladi. Agar bu siz emas bo'lsangiz, e'tibor bermang va /logout yozing.")
 }
 
@@ -91,6 +94,9 @@ func (s *AuthService) PollLogin(ctx context.Context, code string) (token string,
 	if user, err = s.users.Get(ctx, userID); err != nil {
 		return "", domain.User{}, time.Time{}, err
 	}
+	if user.Disabled {
+		return "", domain.User{}, time.Time{}, domain.ErrForbidden
+	}
 	if token, err = RandomToken(32); err != nil {
 		return "", domain.User{}, time.Time{}, err
 	}
@@ -108,6 +114,9 @@ func (s *AuthService) Authenticate(ctx context.Context, token string) (domain.Us
 	}
 	u, err := s.sessions.UserByToken(ctx, HashToken(token), s.clock.Now())
 	if errors.Is(err, domain.ErrNotFound) {
+		return domain.User{}, domain.ErrUnauthorized
+	}
+	if err == nil && u.Disabled {
 		return domain.User{}, domain.ErrUnauthorized
 	}
 	return u, err

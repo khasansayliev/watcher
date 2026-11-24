@@ -43,6 +43,10 @@
   footer { text-align:center; color:var(--muted); font-size:12px; padding:20px; }
   .login { max-width:400px; margin:12vh auto; text-align:center; }
   .login h1 { font-size:22px; margin:0 0 6px; }
+  .subnav { display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
+  .subnav a { padding:6px 12px; border:1px solid var(--line); border-radius:7px; text-decoration:none; color:var(--ink); font-size:14px; background:var(--card); }
+  .subnav a.on { background:#229ed9; color:#fff; border-color:#229ed9; }
+  .inline { display:inline; }
   .pager { display:flex; flex-wrap:wrap; gap:6px; margin-top:14px; align-items:center; }
   .pager a, .pager span { padding:5px 10px; border:1px solid var(--line, #d0d7de); border-radius:6px; text-decoration:none; font-size:13px; }
   .pager .cur { background:#229ed9; color:#fff; border-color:#229ed9; }
@@ -51,6 +55,28 @@
   .tgbtn { display:inline-flex; align-items:center; gap:10px; background:#229ed9; color:#fff; border:0; padding:11px 20px; border-radius:7px; text-decoration:none; font-weight:500; font-size:15px; cursor:pointer; }
   .tgbtn:hover { background:#1b8dc4; }
 </style>
+{{end}}
+
+{{define "adminnav"}}
+<nav class="subnav">
+  <a href="/admin/users"{{if eq .AdminTab "users"}} class="on"{{end}}>Foydalanuvchilar</a>
+  <a href="/admin/watches"{{if eq .AdminTab "watches"}} class="on"{{end}}>Kuzatuvlar</a>
+  <a href="/admin/polling"{{if eq .AdminTab "polling"}} class="on"{{end}}>Tekshiruv oraliqlari</a>
+</nav>
+{{end}}
+
+{{define "pager"}}
+{{if gt .Pages 1}}
+<nav class="pager" aria-label="Sahifalar">
+  {{if .PrevHref}}<a href="{{.PrevHref}}">‹ Oldingi</a>{{else}}<span class="dis">‹ Oldingi</span>{{end}}
+  {{range .Links}}
+    {{if .Gap}}<span class="dis">…</span>
+    {{else if .Current}}<span class="cur">{{.N}}</span>
+    {{else}}<a href="{{.Href}}">{{.N}}</a>{{end}}
+  {{end}}
+  {{if .NextHref}}<a href="{{.NextHref}}">Keyingi ›</a>{{else}}<span class="dis">Keyingi ›</span>{{end}}
+</nav>
+{{end}}
 {{end}}
 
 {{define "head"}}<!doctype html>
@@ -66,7 +92,7 @@
   <a href="/" class="logo">🚆 Watcher</a>
   <nav>
     <a href="/">Kuzatuvlar</a><a href="/search">Qidiruv</a><a href="/settings">Sozlamalar</a>
-    {{if .User.IsAdmin}}<a href="/admin/polling">Admin</a>{{end}}
+    {{if .User.IsAdmin}}<a href="/admin/users">Admin</a>{{end}}
   </nav>
   <div class="me">
     <span>{{.User.Name}}</span>

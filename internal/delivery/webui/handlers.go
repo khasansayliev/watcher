@@ -22,6 +22,14 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 		Today:       s.d.Clock.Today(),
 		MaxWatches:  s.d.MaxWatches,
 	}
+	if err := s.d.Watches.CanCreate(r.Context(), u.ID); err != nil {
+		var ve *domain.ValidationError
+		if errors.As(err, &ve) {
+			vm.CreateBlocked = ve.Msg
+		} else {
+			slog.Error("yaratish ruxsatini tekshirish", "err", err)
+		}
+	}
 	watches, err := s.d.Watches.List(r.Context(), u.ID)
 	if err != nil {
 		slog.Error("kuzatuvlar ro'yxati", "err", err)
