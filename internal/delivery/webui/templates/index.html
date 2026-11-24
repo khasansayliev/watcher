@@ -1,7 +1,7 @@
 {{template "head" .}}
 <section class="card">
   <h2>Yangi kuzatuv</h2>
-  {{if .CreateBlocked}}<div class="warn">{{.CreateBlocked}}</div>{{end}}
+  {{if .CreateBlocked}}<div class="warn">{{.CreateBlocked}}<br><small>Ruxsat bo'lmaguncha mavjud kuzatuvlaringiz ham tekshirilmaydi va xabar yubormaydi.</small></div>{{end}}
   <form method="post" action="/watches" class="grid">
     <label>Qayerdan
       <select name="from" required>{{$df := .DefaultFrom}}{{range .Stations}}<option value="{{.Code}}"{{if eq .Code $df}} selected{{end}}>{{.Name}}</option>{{end}}</select>

@@ -10,7 +10,7 @@ bo'yicha kuzatuv yaratadi. Bo'sh joy chiqqanda Telegram'ga xabar keladi. Sotib o
 - **Jo'nash vaqti oralig'i**: kuzatuv va qidiruvda «shu soatdan keyingilar», «shu soatgacha bo'lganlar», «shu ikki soat oralig'idagilar» yoki (bo'sh qoldirilsa) kun bo'yicha hammasi. Forma standart ravishda Toshkent → Buxoro.
 - **Tekshiruv loglari**: har bir kuzatuv uchun har bir so'rov yoziladi (yuborilgan vaqt, davomiyligi, natija yoki xato, nechta poyezd/mos, xabar yuborildimi, saytdan kelgan poyezdlar va joylar). Kuzatuvdagi «Loglar» tugmasi orqali `req_time` bo'yicha kamayish tartibida, 25 tadan sahifalab ko'riladi. Eski loglar avtomatik o'chadi (`LOG_RETENTION_DAYS`).
 - **Admin boshqaruvi** (`/admin/users`, `/admin/watches`, faqat `ADMIN_TELEGRAM_IDS` dagilar):
-  - Kuzatuv yaratish rejimi: **faqat ruxsat berilganlar** (standart), **hamma** yoki **hech kim**. Yangi foydalanuvchi ruxsatsiz boshlaydi; admin har biriga ruxsat beradi yoki oladi. Adminlar har doim yarata oladi.
+  - Kuzatuv yaratish rejimi: **faqat ruxsat berilganlar** (standart), **hamma** yoki **hech kim**. Yangi foydalanuvchi ruxsatsiz boshlaydi; admin har biriga ruxsat beradi yoki oladi. **Ruxsati yo'q foydalanuvchining mavjud kuzatuvlari ham tekshirilmaydi** va xabar yubormaydi (ruxsat qaytsa davom etadi). «Hech kim» rejimida adminlardan tashqari hamma kuzatuvlar to'xtaydi. Adminlar har doim ruxsatli.
   - Foydalanuvchini o'chirish/yoqish: o'chirilganning sessiyalari tugaydi, kira olmaydi, kuzatuvlari tekshirilmaydi (qayta yoqilsa davom etadi). O'zini o'chirib bo'lmaydi.
   - Kuzatuvni to'xtatish/yoqish (hamma yoki bitta foydalanuvchiniki): admin to'xtatganini foydalanuvchi o'zi yoqa olmaydi.
 - **Telegram bildirishnomalari**: akkaunt va chat bir xil, alohida "ulash" bosqichi yo'q.

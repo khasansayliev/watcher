@@ -130,6 +130,14 @@ func (s *AdminService) Watches(ctx context.Context, actor domain.User, userID in
 	if out.Watches, _, err = s.watches.ListAll(ctx, userID, AdminPerPage, (out.Page-1)*AdminPerPage); err != nil {
 		return AdminWatchPage{}, err
 	}
+	settings, err := s.settings.Get(ctx)
+	if err != nil {
+		return AdminWatchPage{}, err
+	}
+	for i := range out.Watches {
+		o := out.Watches[i].Owner
+		out.Watches[i].NoPermission = settings.CheckCreate(o, o.IsAdmin(s.admins)) != nil
+	}
 	return out, nil
 }
 

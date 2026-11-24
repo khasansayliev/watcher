@@ -55,4 +55,6 @@ type UserSummary struct {
 type WatchWithOwner struct {
 	Watch
 	Owner User
+	// NoPermission — egasida kuzatuv yuritish ruxsati yo'q (rejim va shaxsiy ruxsat bo'yicha): tekshirilmaydi.
+	NoPermission bool
 }

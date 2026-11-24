@@ -78,14 +78,14 @@ func run(log *slog.Logger) error {
 	notifier := telegram.NewNotifier(tgClient, rail.BuyURL(), dir)
 
 	// --- usecase'lar ---
-	monitor := usecase.NewMonitor(watchRepo, checkLogs, pollingRepo, users, rail, notifier, clk, usecase.MonitorConfig{
+	admin := usecase.NewAdminService(users, watchRepo, settingsRepo, sessions, cfg.AdminTelegramIDs)
+	monitor := usecase.NewMonitor(watchRepo, checkLogs, pollingRepo, users, admin, rail, notifier, clk, usecase.MonitorConfig{
 		Tick:                10 * time.Second,
 		MaxBackoff:          30 * time.Minute,
 		GroupPause:          2 * time.Second,
 		MaxSearchesPerCycle: cfg.MaxSearchesPerCycle,
 	}, log)
 	auth := usecase.NewAuthService(users, logins, sessions, notifier, clk, cfg.SessionTTL)
-	admin := usecase.NewAdminService(users, watchRepo, settingsRepo, sessions, cfg.AdminTelegramIDs)
 	watches := usecase.NewWatchService(watchRepo, checkLogs, users, clk, monitor, admin, cfg.MaxWatchesPerUser)
 	search := usecase.NewSearchService(rail, monitor, clk, 10*time.Second, 2*time.Second)
 	tgService := usecase.NewTelegramService(users, notifier)

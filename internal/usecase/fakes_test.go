@@ -492,9 +492,9 @@ func newEnv(maxPerUser, maxSearches int) *env {
 	e.sessions = &memSessions{m: map[string]session{}, u: e.users}
 	e.watches.users = e.users
 	log := discardLog()
-	e.monitor = usecase.NewMonitor(e.watches, e.logs, e.policy, e.users, e.search, e.notif, e.clock,
-		usecase.MonitorConfig{Tick: 10 * time.Second, MaxSearchesPerCycle: maxSearches}, log)
 	e.admin = usecase.NewAdminService(e.users, e.watches, e.settings, e.sessions, []string{"900"})
+	e.monitor = usecase.NewMonitor(e.watches, e.logs, e.policy, e.users, e.admin, e.search, e.notif, e.clock,
+		usecase.MonitorConfig{Tick: 10 * time.Second, MaxSearchesPerCycle: maxSearches}, log)
 	e.ws = usecase.NewWatchService(e.watches, e.logs, e.users, e.clock, e.monitor, e.admin, maxPerUser)
 	e.auth = usecase.NewAuthService(e.users, e.logins, e.sessions, e.notif, e.clock, 24*time.Hour)
 	e.tg = usecase.NewTelegramService(e.users, e.notif)

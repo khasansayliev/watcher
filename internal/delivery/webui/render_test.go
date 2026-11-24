@@ -150,6 +150,9 @@ func TestDashboardShowsCreationBlock(t *testing.T) {
 		DefaultFrom: defaultFrom, DefaultTo: defaultTo, CreateBlocked: "Kuzatuv yaratish uchun administrator ruxsati kerak.",
 		Watches: []watchVM{{ID: 1, RouteLabel: "Toshkent → Buxoro", Active: true, AdminDisabled: true}, {ID: 2, RouteLabel: "A → B", Active: true}},
 	})
+	if !strings.Contains(html, "mavjud kuzatuvlaringiz ham tekshirilmaydi") {
+		t.Fatal("ruxsatsiz foydalanuvchiga mavjud kuzatuvlari ham to'xtashi aytilishi kerak")
+	}
 	if !strings.Contains(html, "administrator ruxsati kerak") || !strings.Contains(html, "Kuzatuv yaratish</button>") {
 		t.Fatal("ogohlantirish ko'rinishi kerak")
 	}

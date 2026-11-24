@@ -39,6 +39,7 @@ type Monitor struct {
 	logs     CheckLogRepository
 	policies PollingRuleRepository
 	users    UserRepository
+	gate     CreationGate
 	searcher TrainSearcher
 	notifier Notifier
 	clock    Clock
@@ -53,14 +54,14 @@ type Monitor struct {
 	pausedUntil time.Time
 }
 
-func NewMonitor(repo WatchRepository, logs CheckLogRepository, policies PollingRuleRepository, users UserRepository, s TrainSearcher, n Notifier, c Clock, cfg MonitorConfig, log *slog.Logger) *Monitor {
+func NewMonitor(repo WatchRepository, logs CheckLogRepository, policies PollingRuleRepository, users UserRepository, gate CreationGate, s TrainSearcher, n Notifier, c Clock, cfg MonitorConfig, log *slog.Logger) *Monitor {
 	if cfg.MaxBackoff == 0 {
 		cfg.MaxBackoff = 30 * time.Minute
 	}
 	if cfg.Tick == 0 {
 		cfg.Tick = domain.MinCheckInterval
 	}
-	return &Monitor{repo: repo, logs: logs, policies: policies, users: users, searcher: s, notifier: n, clock: c, cfg: cfg, log: log, trigger: make(chan int64, 64)}
+	return &Monitor{repo: repo, logs: logs, policies: policies, users: users, gate: gate, searcher: s, notifier: n, clock: c, cfg: cfg, log: log, trigger: make(chan int64, 64)}
 }
 
 func (m *Monitor) PausedUntil() time.Time {
@@ -125,6 +126,7 @@ func (m *Monitor) RunCycle(ctx context.Context, onlyID int64) {
 		}
 	}
 
+	watches = m.permitted(ctx, watches)
 	groups := m.group(ctx, watches)
 	if onlyID == 0 {
 		groups = m.due(ctx, groups)
@@ -169,6 +171,48 @@ func (m *Monitor) RunCycle(ctx context.Context, onlyID int64) {
 			m.record(ctx, l)
 		}
 	}
+}
+
+// noPermissionStatus — ruxsati yo'q foydalanuvchi kuzatuvining holati.
+const noPermissionStatus = "Ruxsat yo'q — administrator ruxsat bermaguncha tekshirilmaydi"
+
+// permitted faqat egasi hozir kuzatuv yuritishga ruxsatli (CreationGate) bo'lgan kuzatuvlarni qoldiradi:
+// ruxsati olingan foydalanuvchining mavjud kuzatuvlari ham tekshirilmaydi va xabar yubormaydi.
+// Ruxsat qaytsa, kuzatuv davom etadi va birinchi topilma haqida yangidan xabar beriladi.
+func (m *Monitor) permitted(ctx context.Context, watches []domain.Watch) []domain.Watch {
+	allowed := map[int64]bool{}
+	out := watches[:0:0]
+	for _, w := range watches {
+		ok, seen := allowed[w.UserID]
+		if !seen {
+			u, err := m.users.Get(ctx, w.UserID)
+			switch {
+			case err != nil:
+				ok = false // egasini aniqlab bo'lmadi — bu siklda o'tkazib yuboramiz
+			default:
+				gerr := m.gate.CanCreate(ctx, u)
+				var ve *domain.ValidationError
+				ok = gerr == nil
+				if gerr != nil && !errors.As(gerr, &ve) {
+					m.log.Warn("ruxsatni tekshirib bo'lmadi", "user", w.UserID, "err", gerr)
+					allowed[w.UserID] = false
+					continue
+				}
+			}
+			allowed[w.UserID] = ok
+		}
+		if ok {
+			out = append(out, w)
+			continue
+		}
+		if w.LastStatus != noPermissionStatus { // har siklda yozmaymiz
+			_, _ = m.repo.Update(ctx, w.ID, func(x *domain.Watch) {
+				x.LastStatus = noPermissionStatus
+				x.LastSig = ""
+			})
+		}
+	}
+	return out
 }
 
 // group muddati o'tganlarini to'xtatadi va qolganlarini yo'nalish bo'yicha guruhlaydi.

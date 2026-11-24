@@ -161,9 +161,9 @@ func (s *Server) adminUsers(w http.ResponseWriter, r *http.Request) {
 	}
 	cur := pg.Settings.CreationMode
 	for _, m := range []modeVM{
-		{Value: string(domain.CreationApproved), Label: "Faqat ruxsat berilganlar", Hint: "yangi foydalanuvchi ruxsatsiz boshlaydi; ruxsatni quyida har bir foydalanuvchiga siz berasiz"},
+		{Value: string(domain.CreationApproved), Label: "Faqat ruxsat berilganlar", Hint: "yangi foydalanuvchi ruxsatsiz boshlaydi; ruxsatni quyida har bir foydalanuvchiga siz berasiz. Ruxsati yo'qlarning kuzatuvlari ham tekshirilmaydi"},
 		{Value: string(domain.CreationAll), Label: "Hamma", Hint: "shaxsiy ruxsatlardan qat'i nazar, hamma kuzatuv yarata oladi"},
-		{Value: string(domain.CreationNone), Label: "Hech kim", Hint: "yangi kuzatuv yaratish hamma uchun bloklanadi (mavjudlari ishlayveradi)"},
+		{Value: string(domain.CreationNone), Label: "Hech kim", Hint: "yangi kuzatuv yaratish ham, boshqalarning mavjud kuzatuvlarini tekshirish ham to'xtaydi (adminlardan tashqari)"},
 	} {
 		m.Current = string(cur) == m.Value
 		if m.Current {
@@ -207,7 +207,7 @@ func (s *Server) adminUserCreation(w http.ResponseWriter, r *http.Request) {
 		s.backTo(w, r, back, "Kuzatuv yaratishga ruxsat berildi", "ok")
 		return
 	}
-	s.backTo(w, r, back, "Kuzatuv yaratish ruxsati olindi (mavjud kuzatuvlari ishlayveradi)", "ok")
+	s.backTo(w, r, back, "Ruxsat olindi: yangi kuzatuv yarata olmaydi va mavjud kuzatuvlari ham tekshirilmaydi", "ok")
 }
 
 func (s *Server) adminUserDisabled(w http.ResponseWriter, r *http.Request) {
@@ -279,6 +279,8 @@ func (s *Server) adminWatches(w http.ResponseWriter, r *http.Request) {
 			row.State, row.StateClass = "admin to'xtatgan", "err"
 		case x.Owner.Disabled:
 			row.State, row.StateClass = "egasi o'chirilgan", "err"
+		case x.NoPermission:
+			row.State, row.StateClass = "ruxsat yo'q", "err"
 		case !x.Active:
 			row.State, row.StateClass = "to'xtatilgan", ""
 		default:

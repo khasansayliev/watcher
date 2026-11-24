@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/khasansayliev/watcher/internal/domain"
 	"github.com/khasansayliev/watcher/internal/usecase"
@@ -262,5 +263,81 @@ func TestAdminListsUsersAndWatchesWithPagination(t *testing.T) {
 	}
 	if _, err := e.admin.Watches(ctx, admin, 9999, 1); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("noma'lum foydalanuvchi: %v", err)
+	}
+}
+
+func TestRevokedUserWatchesAreNotMonitored(t *testing.T) {
+	e := newEnv(10, 0)
+	ctx := context.Background()
+	admin := e.admin900()
+	u := newcomer(t, e, "555")
+	_ = e.admin.SetCanCreate(ctx, admin, u.ID, true)
+	w := mustCreate(t, e, u, "2900000", "2900800", "2026-12-05")
+	e.monitor.RunCycle(ctx, 0)
+	if e.search.calls != 1 || e.notif.count("555") < 1 {
+		t.Fatal("ruxsat bor — kuzatuv ishlashi kerak")
+	}
+	sentBefore, logsBefore := e.notif.count("555"), len(e.logs.forWatch(w.ID))
+
+	// Ruxsat olinadi: mavjud kuzatuv ham to'xtaydi.
+	_ = e.admin.SetCanCreate(ctx, admin, u.ID, false)
+	e.clock.add(2 * time.Hour) // oraliqdan (1 soat) o'tgan: to'xtash sababi faqat ruxsat bo'lishi kerak
+	e.monitor.RunCycle(ctx, 0)
+	e.monitor.RunCycle(ctx, w.ID) // qo'lda tekshiruv ham o'tmaydi
+	if e.search.calls != 1 {
+		t.Fatalf("ruxsatsiz foydalanuvchi uchun so'rov yuborilmasligi kerak: %d", e.search.calls)
+	}
+	if e.notif.count("555") != sentBefore || len(e.logs.forWatch(w.ID)) != logsBefore {
+		t.Fatal("xabar ham, log ham bo'lmasligi kerak")
+	}
+	got, _ := e.watches.Get(ctx, w.ID)
+	if !strings.Contains(got.LastStatus, "Ruxsat yo'q") || got.LastSig != "" {
+		t.Fatalf("holat ruxsat yo'qligini ko'rsatishi kerak: %+v", got)
+	}
+
+	// Admin ro'yxatida belgilanadi.
+	pg, _ := e.admin.Watches(ctx, admin, u.ID, 1)
+	if len(pg.Watches) != 1 || !pg.Watches[0].NoPermission {
+		t.Fatalf("admin ro'yxatida 'ruxsat yo'q' bo'lishi kerak: %+v", pg.Watches)
+	}
+
+	// Ruxsat qaytadi: kuzatuv davom etadi va yangidan xabar beradi.
+	_ = e.admin.SetCanCreate(ctx, admin, u.ID, true)
+	e.clock.add(2 * time.Hour) // oraliqdan (1 soat) o'tgan: to'xtash sababi faqat ruxsat bo'lishi kerak
+	e.monitor.RunCycle(ctx, 0)
+	if e.search.calls != 2 || e.notif.count("555") != sentBefore+1 {
+		t.Fatalf("ruxsat qaytgach davom etishi va xabar berishi kerak: calls=%d sent=%d", e.search.calls, e.notif.count("555"))
+	}
+}
+
+func TestCreationModeControlsMonitoring(t *testing.T) {
+	e := newEnv(10, 0)
+	ctx := context.Background()
+	admin := e.admin900()
+	_ = e.admin.SetCreationMode(ctx, admin, domain.CreationAll)
+	plain := newcomer(t, e, "555") // shaxsiy ruxsati yo'q
+	mustCreate(t, e, plain, "2900000", "2900800", "2026-12-05")
+	adminWatch := mustCreate(t, e, admin, "2900000", "2900700", "2026-12-05")
+
+	e.monitor.RunCycle(ctx, 0)
+	if e.search.calls != 2 {
+		t.Fatalf("'hamma' rejimida ikkalasi ham tekshiriladi: %d", e.search.calls)
+	}
+
+	_ = e.admin.SetCreationMode(ctx, admin, domain.CreationApproved)
+	e.clock.add(2 * time.Hour) // oraliqdan (1 soat) o'tgan: to'xtash sababi faqat ruxsat bo'lishi kerak
+	e.monitor.RunCycle(ctx, 0)
+	if e.search.calls != 3 {
+		t.Fatalf("'ruxsat berilganlar' rejimida ruxsatsizniki to'xtaydi, adminniki qoladi: %d", e.search.calls)
+	}
+
+	_ = e.admin.SetCreationMode(ctx, admin, domain.CreationNone)
+	e.clock.add(2 * time.Hour) // oraliqdan (1 soat) o'tgan: to'xtash sababi faqat ruxsat bo'lishi kerak
+	e.monitor.RunCycle(ctx, 0)
+	if e.search.calls != 4 {
+		t.Fatalf("'hech kim' rejimida faqat adminniki ishlaydi: %d", e.search.calls)
+	}
+	if got, _ := e.watches.Get(ctx, adminWatch.ID); strings.Contains(got.LastStatus, "Ruxsat yo'q") {
+		t.Fatal("adminga 'ruxsat yo'q' yozilmasligi kerak")
 	}
 }
