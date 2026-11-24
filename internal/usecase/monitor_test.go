@@ -64,6 +64,7 @@ func TestMonitorRespectsSearchCapAndRotates(t *testing.T) {
 	}
 }
 
+<<<<<<< Updated upstream
 func TestMonitorUserBlockedBot(t *testing.T) {
 	e := newEnv(10, 0)
 	ctx := context.Background()
@@ -84,6 +85,8 @@ func TestMonitorUserBlockedBot(t *testing.T) {
 	}
 }
 
+=======
+>>>>>>> Stashed changes
 func TestMonitorBackoffOnUpstreamError(t *testing.T) {
 	e := newEnv(10, 0)
 	ctx := context.Background()
@@ -161,7 +164,11 @@ func TestMonitorPolicyChangeAppliesWithoutRestart(t *testing.T) {
 	mustCreate(t, e, e.user("A"), "2900000", "2900700", "2027-01-10") // 12 soat
 	e.monitor.RunCycle(ctx, 0)
 
+<<<<<<< Updated upstream
 	admin := e.admin()
+=======
+	admin := e.users.add(domain.User{TelegramChatID: "900"})
+>>>>>>> Stashed changes
 	if _, err := e.polling.Update(ctx, admin, []domain.PollingRule{{MaxDaysLeft: 0, Interval: time.Minute}}); err != nil {
 		t.Fatal(err)
 	}

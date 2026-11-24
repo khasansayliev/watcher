@@ -13,7 +13,7 @@ import (
 
 type Config struct {
 	Listen   string
-	BaseURL  string // tashqi manzil: https://bilet.example.uz (OAuth redirect shundan yasaladi)
+	BaseURL  string // tashqi manzil: https://bilet.example.uz (cookie'lar Secure bo'lishi shu bilan aniqlanadi)
 	TimeZone string
 	DataDir  string
 
@@ -29,7 +29,11 @@ type Config struct {
 	MaxSearchesPerCycle int
 	MaxWatchesPerUser   int
 	SessionTTL          time.Duration
+<<<<<<< Updated upstream
 	AdminTelegramIDs    []int64
+=======
+	AdminTelegramIDs    []string
+>>>>>>> Stashed changes
 
 	Warnings []string
 }
@@ -55,7 +59,11 @@ func Load() (Config, error) {
 		c.DatabasePath = filepath.Join(c.DataDir, "watcher.db")
 	}
 	if c.TelegramToken == "" {
+<<<<<<< Updated upstream
 		errs = append(errs, errors.New("TELEGRAM_BOT_TOKEN kerak — kirish ham, bildirishnomalar ham Telegram bot orqali"))
+=======
+		errs = append(errs, errors.New("TELEGRAM_BOT_TOKEN kerak: kirish Telegram orqali amalga oshadi"))
+>>>>>>> Stashed changes
 	}
 
 	var err error
@@ -71,9 +79,15 @@ func Load() (Config, error) {
 	if c.MaxWatchesPerUser, err = integer("MAX_WATCHES_PER_USER", 10); err != nil {
 		errs = append(errs, err)
 	}
+<<<<<<< Updated upstream
 	for _, e := range strings.Split(os.Getenv("ADMIN_TELEGRAM_IDS"), ",") {
 		if e = strings.TrimSpace(e); e == "" {
 			continue
+=======
+	for _, id := range strings.Split(os.Getenv("ADMIN_TELEGRAM_IDS"), ",") {
+		if id = strings.TrimSpace(id); id != "" {
+			c.AdminTelegramIDs = append(c.AdminTelegramIDs, id)
+>>>>>>> Stashed changes
 		}
 		id, err := strconv.ParseInt(e, 10, 64)
 		if err != nil || id <= 0 {
@@ -85,7 +99,13 @@ func Load() (Config, error) {
 	if os.Getenv("ADMIN_EMAILS") != "" {
 		c.Warnings = append(c.Warnings, "ADMIN_EMAILS endi ishlatilmaydi — ADMIN_TELEGRAM_IDS ga Telegram ID'larni yozing")
 	}
+<<<<<<< Updated upstream
 
+=======
+	if os.Getenv("ADMIN_EMAILS") != "" {
+		c.Warnings = append(c.Warnings, "ADMIN_EMAILS endi ishlatilmaydi — adminlar ADMIN_TELEGRAM_IDS (Telegram ID'lar, vergul bilan) orqali beriladi")
+	}
+>>>>>>> Stashed changes
 	if !c.SecureCookies() {
 		c.Warnings = append(c.Warnings, "BASE_URL https emas — productionda albatta https ishlating")
 	}

@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+<<<<<<< Updated upstream
 	"errors"
 	"strings"
 )
@@ -26,6 +27,21 @@ func NewTelegramService(users UserRepository, n Notifier, siteURL string) *Teleg
 func (s *TelegramService) Greet(ctx context.Context, chatID string) error {
 	return s.notifier.SendText(ctx, chatID, "Salom! Bu Watcher boti. "+s.siteURL+
 		" saytiga \"Telegram orqali kirish\" tugmasi bilan kiring va kuzatuv yarating — poyezdga bo'sh joy chiqsa shu yerga xabar keladi.")
+=======
+
+	"github.com/khasansayliev/watcher/internal/domain"
+)
+
+// TelegramService — foydalanuvchiga Telegram orqali xabar yuborish (akkaunt va chat bir xil,
+// shuning uchun alohida "ulash" bosqichi yo'q).
+type TelegramService struct {
+	users    UserRepository
+	notifier Notifier
+}
+
+func NewTelegramService(users UserRepository, n Notifier) *TelegramService {
+	return &TelegramService{users: users, notifier: n}
+>>>>>>> Stashed changes
 }
 
 func (s *TelegramService) SendTest(ctx context.Context, userID int64) error {
@@ -33,9 +49,14 @@ func (s *TelegramService) SendTest(ctx context.Context, userID int64) error {
 	if err != nil {
 		return err
 	}
+<<<<<<< Updated upstream
 	err = s.notifier.SendText(ctx, u.ChatID(), "✅ Test xabar: Watcher ishlayapti.")
 	if err != nil && isForbidden(err) {
 		return ErrBotBlocked
+=======
+	if !u.HasTelegram() {
+		return domain.NewValidationError("Telegram akkaunt topilmadi")
+>>>>>>> Stashed changes
 	}
 	return err
 }

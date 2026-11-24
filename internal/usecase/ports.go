@@ -4,6 +4,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -24,8 +25,14 @@ type WatchRepository interface {
 }
 
 type UserRepository interface {
+<<<<<<< Updated upstream
 	// UpsertByIdentity Telegram ID bo'yicha foydalanuvchini yaratadi yoki profilini (ism, username, rasm) yangilaydi.
 	UpsertByIdentity(ctx context.Context, id domain.Identity, now time.Time) (domain.User, error)
+=======
+	// UpsertByTelegram Telegram ID bo'yicha foydalanuvchini yaratadi (ro'yxatdan o'tish)
+	// yoki profilini yangilaydi (kirish).
+	UpsertByTelegram(ctx context.Context, p domain.TelegramProfile, now time.Time) (domain.User, error)
+>>>>>>> Stashed changes
 	Get(ctx context.Context, id int64) (domain.User, error)
 }
 
@@ -34,9 +41,26 @@ type SessionRepository interface {
 	// UserByToken amal qilayotgan sessiya egasini qaytaradi; bo'lmasa domain.ErrUnauthorized.
 	UserByToken(ctx context.Context, tokenHash []byte, now time.Time) (domain.User, error)
 	Delete(ctx context.Context, tokenHash []byte) error
+	// DeleteByTelegram foydalanuvchining barcha sessiyalarini o'chiradi.
+	DeleteByTelegram(ctx context.Context, telegramID string) error
+	// DeleteExpired eskirgan sessiyalar va kirish so'rovlarini o'chiradi.
 	DeleteExpired(ctx context.Context, now time.Time) (int64, error)
 }
 
+<<<<<<< Updated upstream
+=======
+// LoginRequestRepository — bir martalik kirish so'rovlari. Brauzer so'rov ochadi (Begin),
+// foydalanuvchi botda tasdiqlaydi (Approve), brauzer natijani oladi (Claim).
+type LoginRequestRepository interface {
+	Begin(ctx context.Context, code string, expiresAt time.Time) error
+	// Approve so'rovni foydalanuvchiga bog'laydi; so'rov yo'q/eskirgan/allaqachon tasdiqlangan bo'lsa domain.ErrNotFound.
+	Approve(ctx context.Context, code string, userID int64, now time.Time) error
+	// Claim tasdiqlangan so'rovni bir martalik oladi va o'chiradi.
+	// Hali tasdiqlanmagan bo'lsa ErrLoginPending, yo'q/eskirgan bo'lsa domain.ErrNotFound.
+	Claim(ctx context.Context, code string, now time.Time) (userID int64, err error)
+}
+
+>>>>>>> Stashed changes
 // PollingRuleRepository — tekshiruv oraliqlari jadvali (admin boshqaradi).
 type PollingRuleRepository interface {
 	Get(ctx context.Context) (domain.PollingPolicy, error)
@@ -50,17 +74,25 @@ type TrainSearcher interface {
 	Search(ctx context.Context, r domain.Route) ([]domain.Train, error)
 }
 
+<<<<<<< Updated upstream
 // IdentityVerifier — Telegram Login Widget qaytargan maydonlarni (id, first_name, ..., auth_date, hash)
 // imzo bo'yicha tekshiradi. Imzo noto'g'ri bo'lsa xato qaytaradi.
 type IdentityVerifier interface {
 	Verify(fields map[string]string) (domain.Identity, error)
 }
 
+=======
+>>>>>>> Stashed changes
 // Notifier — foydalanuvchiga xabar yetkazish (Telegram).
 type Notifier interface {
 	Enabled() bool
 	NotifyAvailability(ctx context.Context, chatID string, r domain.Route, matches []domain.Match) error
 	SendText(ctx context.Context, chatID, text string) error
+<<<<<<< Updated upstream
+=======
+	// BotURL — bosilganda botni kod bilan ochadigan havola (t.me/<bot>?start=<code>).
+	BotURL(code string) (string, error)
+>>>>>>> Stashed changes
 }
 
 type StationDirectory interface {
@@ -72,6 +104,9 @@ type Clock interface {
 	Now() time.Time
 	Today() string // domain.DateLayout
 }
+
+// ErrLoginPending — kirish so'rovi hali botda tasdiqlanmagan.
+var ErrLoginPending = errors.New("kirish tasdiqlanmagan")
 
 // UpstreamError — tashqi API xatosi. Monitor RetryAfter'ga qarab pauza qiladi.
 type UpstreamError struct {

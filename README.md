@@ -1,16 +1,27 @@
 # 🚆 Watcher — O'zbekiston temir yo'llari bilet kuzatuvchisi
 
+<<<<<<< Updated upstream
 Ko'p foydalanuvchili platforma. Foydalanuvchi Telegram orqali kiradi, so'ng yo'nalish va sana
+=======
+Ko'p foydalanuvchili platforma. Foydalanuvchi Telegram orqali kiradi (alohida ro'yxatdan o'tish yo'q), so'ng yo'nalish va sana
+>>>>>>> Stashed changes
 bo'yicha kuzatuv yaratadi. Bo'sh joy chiqqanda Telegram'ga xabar keladi. Sotib olish rasmiy saytda qilinadi.
 
 ## Imkoniyatlar
 
+<<<<<<< Updated upstream
 - **Telegram orqali kirish** (rasmiy Telegram Login Widget). Telegram foydalanuvchi ma'lumotini bot tokeni bilan
   imzolaydi, server esa imzoni (HMAC-SHA256) tekshiradi, shuning uchun ma'lumotni soxtalashtirib bo'lmaydi.
   1 soatdan eski ma'lumot rad etiladi (replay himoyasi). Kirish faqat sayt login sahifasi ochilgan brauzerda
   yakunlanadi (login CSRF himoyasi). Sessiya tokeni HttpOnly cookie'da, bazada uning sha256 xeshi saqlanadi.
 - **Alohida "ulash" bosqichi yo'q**: kirishda bot xabar yuborishiga ruxsat so'raladi, bildirishnomalar
   foydalanuvchining o'z Telegram'iga keladi.
+=======
+- **Telegram orqali kirish va ro'yxatdan o'tish**: saytdagi tugma botni kod bilan ochadi, Start bosilgach akkaunt yaratiladi/topiladi va brauzer kiradi. Parol yo'q.
+- Sessiya tokeni faqat HttpOnly cookie'da turadi, bazada uning sha256 xeshi saqlanadi.
+- **Telegram bildirishnomalari**: akkaunt va chat bir xil, alohida "ulash" bosqichi yo'q.
+  Kod bir martalik va 10 daqiqa amal qiladi, faqat uni ochgan brauzerga bog'langan. Chat ID'ni qo'lda kiritish yo'q, shuning uchun birovning chatiga xabar yuborib bo'lmaydi.
+>>>>>>> Stashed changes
 - Har bir foydalanuvchi **faqat o'z kuzatuvlarini** ko'radi va boshqaradi. Egalik usecase qatlamida tekshiriladi.
 - **Limitlar**: foydalanuvchiga N ta faol kuzatuv (`MAX_WATCHES_PER_USER`). Qo'lda qidiruv har bir foydalanuvchi uchun 10 soniyada bir marta.
 - **Tekshiruv oraliqlari jadvali**: jo'nashga qancha qolganiga qarab, admin `/admin/polling` sahifasida boshqaradi
@@ -38,17 +49,28 @@ cmd/watcher/                     composition root (main.go) + SQLite drayveri (d
 internal/
   domain/                        entity va biznes qoidalari: User, Identity (Telegram), Watch, Route, Train, Filter, PollingPolicy
   usecase/                       stsenariylar + portlar (interfeyslar)
+<<<<<<< Updated upstream
     ports.go                     WatchRepository, UserRepository, SessionRepository, PollingRuleRepository,
                                  TrainSearcher, IdentityVerifier, Notifier, StationDirectory, Clock
     auth_service.go              Telegram orqali kirish, sessiyalar
     telegram_service.go          bot: /start javobi, test xabar
+=======
+    ports.go                     WatchRepository, UserRepository, SessionRepository, LoginRequestRepository,
+                                 TrainSearcher, IdentityProvider, Notifier, StationDirectory, Clock
+    auth_service.go              Telegram login/signup, sessiyalar
+    telegram_service.go          Telegram'ni akkauntga bog'lash
+>>>>>>> Stashed changes
     watch_service.go             kuzatuvlar (egalik + limit)
     search_service.go            qo'lda qidiruv (cheklovlar bilan)
     polling_service.go           oraliqlar jadvali (faqat admin) va yuklama statistikasi
     monitor.go                   davriy tekshiruv (jadval bo'yicha, guruhlash, chegara, backoff)
   adapter/
     sqlite/                      database/sql repolar + ichki SQL migratsiyalar
+<<<<<<< Updated upstream
     telegram/                    Bot API (xabar, getUpdates) + Login Widget imzosini tekshirish
+=======
+    telegram/                    Bot API: xabar yuborish, getUpdates
+>>>>>>> Stashed changes
     railway/                     eticket.railway.uz API (DTO → domain)
     stations/, clock/
   delivery/
@@ -64,6 +86,7 @@ Tashqi kutubxonaga faqat `cmd/watcher/driver.go` bog'liq: `modernc.org/sqlite`, 
 
 ### 1. Telegram bot
 
+<<<<<<< Updated upstream
 1. @BotFather → `/newbot` → tokenni `.env` dagi `TELEGRAM_BOT_TOKEN` ga yozing.
 2. @BotFather → `/setdomain` → botingizni tanlang → saytingiz domenini yozing (masalan `watcher.example.uz`).
    **Login Widget faqat shu domenda ishlaydi**, `BASE_URL` ham aynan shu domen bo'lishi kerak (`https://`).
@@ -76,8 +99,13 @@ Lokal ishlab chiqishda widget `localhost`da ishlamaydi. Tunnel orqali vaqtinchal
 
 `ADMIN_TELEGRAM_IDS` ga adminlarning Telegram ID'larini vergul bilan yozing. O'z ID'ingizni bilish uchun @userinfobot ga yozing.
 Username o'zgarishi mumkin, ID esa o'zgarmaydi, shuning uchun ID ishlatiladi.
+=======
+@BotFather → `/newbot` → tokenni `.env` dagi `TELEGRAM_BOT_TOKEN` ga yozing (majburiy: bot bo'lmasa hech kim kira olmaydi).
+Botga `/logout` yozilsa, shu akkauntning barcha sessiyalari tugatiladi.
+Bot long polling bilan ishlaydi, shuning uchun bot uchun webhook o'rnatilmagan bo'lishi kerak.
+>>>>>>> Stashed changes
 
-### 3. Ishga tushirish
+### 2. Ishga tushirish
 
 ```bash
 cp .env.example .env      # qiymatlarni to'ldiring
@@ -89,7 +117,11 @@ Docker'siz:
 
 ```bash
 go mod tidy               # SQLite drayverini yuklaydi (bir marta; go.sum'ni commit qiling)
+<<<<<<< Updated upstream
 export BASE_URL=https://sizning-domen TELEGRAM_BOT_TOKEN=... ADMIN_TELEGRAM_IDS=...
+=======
+export BASE_URL=http://localhost:8080 TELEGRAM_BOT_TOKEN=...
+>>>>>>> Stashed changes
 go run ./cmd/watcher
 ```
 
@@ -110,12 +142,21 @@ Migratsiyalar ishga tushganda avtomatik qo'llanadi.
 | O'zgaruvchi | Default | Izoh |
 |---|---|---|
 | `DATABASE_PATH` | `./data/watcher.db` | SQLite fayli (papkasi avtomatik yaratiladi) |
+<<<<<<< Updated upstream
 | `BASE_URL` | `http://localhost:8080` | Tashqi manzil (BotFather `/setdomain` dagi domen, `https://`). Widget callback'i va `Secure` cookie shundan |
 | `TELEGRAM_BOT_TOKEN` | — (majburiy) | Kirish va bildirishnomalar shu bot orqali |
 | `MAX_SEARCHES_PER_CYCLE` | `30` | Bir siklda saytga yuboriladigan so'rovlar chegarasi |
 | `MAX_WATCHES_PER_USER` | `10` | Foydalanuvchiga faol kuzatuvlar soni (`0` = cheksiz) |
 | `SESSION_TTL` | `720h` | Sessiya muddati |
 | `ADMIN_TELEGRAM_IDS` | — | Telegram ID'lar, vergul bilan. Adminlar `/admin/polling` (oraliqlar jadvali, yuklama) va API debug sahifasini ko'radi |
+=======
+| `BASE_URL` | `http://localhost:8080` | Tashqi manzil. `https://` bo'lsa cookie'lar `Secure` bo'ladi |
+| `TELEGRAM_BOT_TOKEN` | — (majburiy) | Kirish va xabarlar shu bot orqali |
+| `MAX_SEARCHES_PER_CYCLE` | `30` | Bir siklda saytga yuboriladigan so'rovlar chegarasi |
+| `MAX_WATCHES_PER_USER` | `10` | Foydalanuvchiga faol kuzatuvlar soni (`0` = cheksiz) |
+| `SESSION_TTL` | `720h` | Sessiya muddati |
+| `ADMIN_TELEGRAM_IDS` | — | Adminlarning Telegram ID'lari, vergul bilan (ID'ni @userinfobot dan bilib oling). Adminlar `/admin/polling` (oraliqlar jadvali, yuklama) va API debug sahifasini ko'radi |
+>>>>>>> Stashed changes
 | `RAILWAY_BASE`, `RAILWAY_LANG`, `RAILWAY_COOKIE` | | Temir yo'l API sozlamalari |
 | `STATIONS_FILE`, `TZ_NAME`, `LISTEN_ADDR`, `DATA_DIR` | | |
 
@@ -126,7 +167,11 @@ go test -race ./...
 ```
 
 Domen va usecase'lar soxta (fake) portlar bilan, tarmoqsiz va bazasiz tekshiriladi. Testlar qamrab olgan holatlar:
+<<<<<<< Updated upstream
 Telegram imzosi (soxta, boshqa token, o'zgartirilgan maydon), eskirgan kirish ma'lumoti, sessiya muddati, egalik (A ning kuzatuvini B o'zgartira olmaydi), limitlar,
+=======
+Telegram orqali login (bir martalik, muddatli kod) va sessiya muddati, egalik (A ning kuzatuvini B o'zgartira olmaydi), limitlar,
+>>>>>>> Stashed changes
 Telegram kodining bir martaligi va muddati, bitta chatning ikki akkauntga bog'lanmasligi,
 bir xil yo'nalishga bitta so'rov, so'rovlar chegarasi va navbat, `Retry-After`, sanasi o'tgan kuzatuvlar.
 

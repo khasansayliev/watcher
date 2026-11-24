@@ -57,6 +57,10 @@ func run(log *slog.Logger) error {
 	}
 	users := sqlite.NewUsers(db)
 	sessions := sqlite.NewSessions(db)
+<<<<<<< Updated upstream
+=======
+	logins := sqlite.NewLoginRequests(db)
+>>>>>>> Stashed changes
 	watchRepo := sqlite.NewWatches(db)
 	pollingRepo := sqlite.NewPollingRules(db)
 
@@ -74,6 +78,7 @@ func run(log *slog.Logger) error {
 	})
 	tgClient := telegram.NewClient(cfg.TelegramToken)
 	notifier := telegram.NewNotifier(tgClient, rail.BuyURL(), dir)
+<<<<<<< Updated upstream
 	verifier := telegram.NewLoginVerifier(cfg.TelegramToken)
 	botCtx, cancelMe := context.WithTimeout(ctx, 15*time.Second)
 	botUsername, err := tgClient.Username(botCtx) // Login Widget bot nomini talab qiladi
@@ -81,6 +86,8 @@ func run(log *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("telegram bot (getMe): %w — TELEGRAM_BOT_TOKEN to'g'rimi?", err)
 	}
+=======
+>>>>>>> Stashed changes
 
 	// --- usecase'lar ---
 	monitor := usecase.NewMonitor(watchRepo, pollingRepo, users, rail, notifier, clk, usecase.MonitorConfig{
@@ -89,10 +96,17 @@ func run(log *slog.Logger) error {
 		GroupPause:          2 * time.Second,
 		MaxSearchesPerCycle: cfg.MaxSearchesPerCycle,
 	}, log)
+<<<<<<< Updated upstream
 	auth := usecase.NewAuthService(verifier, users, sessions, clk, cfg.SessionTTL)
 	watches := usecase.NewWatchService(watchRepo, users, clk, monitor, cfg.MaxWatchesPerUser)
 	search := usecase.NewSearchService(rail, monitor, clk, 10*time.Second, 2*time.Second)
 	tgService := usecase.NewTelegramService(users, notifier, cfg.BaseURL)
+=======
+	auth := usecase.NewAuthService(users, logins, sessions, notifier, clk, cfg.SessionTTL)
+	watches := usecase.NewWatchService(watchRepo, users, clk, monitor, cfg.MaxWatchesPerUser)
+	search := usecase.NewSearchService(rail, monitor, clk, 10*time.Second, 2*time.Second)
+	tgService := usecase.NewTelegramService(users, notifier)
+>>>>>>> Stashed changes
 	polling := usecase.NewPollingService(pollingRepo, watchRepo, clk, cfg.AdminTelegramIDs)
 
 	// --- delivery ---
@@ -115,7 +129,7 @@ func run(log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	bot := telegrambot.New(tgClient, tgService, log)
+	bot := telegrambot.New(tgClient, auth, log)
 
 	go monitor.Run(ctx)
 	go bot.Run(ctx)

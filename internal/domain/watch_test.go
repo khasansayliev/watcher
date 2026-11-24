@@ -64,6 +64,7 @@ func TestNewWatchValidation(t *testing.T) {
 	}
 }
 
+<<<<<<< Updated upstream
 func TestIdentityValidate(t *testing.T) {
 	now := time.Date(2026, 11, 24, 18, 0, 0, 0, time.UTC)
 	ok := Identity{TelegramID: 42, FirstName: "Jem", AuthDate: now.Add(-time.Minute)}
@@ -81,6 +82,21 @@ func TestIdentityValidate(t *testing.T) {
 		if err := id.Validate(now); !errors.As(err, &ve) {
 			t.Errorf("%s: ValidationError kutilgan, olindi %v", name, err)
 		}
+=======
+func TestTelegramProfileValidate(t *testing.T) {
+	if err := (TelegramProfile{ID: "42"}).Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if err := (TelegramProfile{}).Validate(); err == nil {
+		t.Fatal("ID'siz profil rad etilishi kerak")
+	}
+}
+
+func TestUserIsAdmin(t *testing.T) {
+	u := User{TelegramChatID: "42"}
+	if !u.IsAdmin([]string{"7", " 42 "}) || u.IsAdmin([]string{"7"}) || (User{}).IsAdmin([]string{""}) {
+		t.Fatal("admin tekshiruvi noto'g'ri")
+>>>>>>> Stashed changes
 	}
 }
 

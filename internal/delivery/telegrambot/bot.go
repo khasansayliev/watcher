@@ -1,6 +1,10 @@
 // Package telegrambot — Telegram'dan kiruvchi buyruqlar (delivery qatlami).
+<<<<<<< Updated upstream
 // Hozircha faqat /start: foydalanuvchiga saytga qanday kirishni aytadi.
 // Botga /start yozish, shuningdek, bot foydalanuvchiga xabar yubora olishini ta'minlaydi.
+=======
+// Bot "/start <kod>" (saytga kirish) va "/logout" ni oladi va usecase'ga uzatadi; o'zi biznes mantiq saqlamaydi.
+>>>>>>> Stashed changes
 package telegrambot
 
 import (
@@ -10,13 +14,22 @@ import (
 	"time"
 
 	"github.com/khasansayliev/watcher/internal/adapter/telegram"
+	"github.com/khasansayliev/watcher/internal/domain"
 )
 
+<<<<<<< Updated upstream
 type Greeter interface {
+=======
+// LoginHandler — botdan kelgan kirish buyruqlarini qayta ishlaydigan usecase.
+type LoginHandler interface {
+	ConfirmLogin(ctx context.Context, code string, p domain.TelegramProfile) error
+>>>>>>> Stashed changes
 	Greet(ctx context.Context, chatID string) error
+	LogoutAll(ctx context.Context, telegramID string) error
 }
 
 type Bot struct {
+<<<<<<< Updated upstream
 	client  *telegram.Client
 	greeter Greeter
 	log     *slog.Logger
@@ -24,6 +37,15 @@ type Bot struct {
 
 func New(c *telegram.Client, g Greeter, log *slog.Logger) *Bot {
 	return &Bot{client: c, greeter: g, log: log}
+=======
+	client *telegram.Client
+	login  LoginHandler
+	log    *slog.Logger
+}
+
+func New(c *telegram.Client, l LoginHandler, log *slog.Logger) *Bot {
+	return &Bot{client: c, login: l, log: log}
+>>>>>>> Stashed changes
 }
 
 // Run long polling sikli. Bot uchun webhook o'rnatilmagan bo'lishi kerak.
@@ -60,12 +82,34 @@ func (b *Bot) handle(ctx context.Context, u telegram.Update) {
 	if u.ChatID == "" {
 		return
 	}
+<<<<<<< Updated upstream
 	cmd, _, _ := strings.Cut(strings.TrimSpace(u.Text), " ")
 	if cmd != "/start" {
 		return
 	}
 	err := b.greeter.Greet(ctx, u.ChatID)
+=======
+	cmd, arg, _ := strings.Cut(strings.TrimSpace(u.Text), " ")
+	if at := strings.IndexByte(cmd, '@'); at >= 0 { // "/start@my_bot"
+		cmd = cmd[:at]
+	}
+	var err error
+	switch cmd {
+	case "/start":
+		if arg = strings.TrimSpace(arg); arg == "" {
+			err = b.login.Greet(ctx, u.ChatID)
+		} else {
+			err = b.login.ConfirmLogin(ctx, arg, domain.TelegramProfile{ID: u.ChatID, Username: u.Username, Name: u.Name})
+		}
+	case "/logout":
+		if err = b.login.LogoutAll(ctx, u.ChatID); err == nil {
+			err = b.client.SendMessage(ctx, u.ChatID, "Barcha qurilmalardagi sessiyalar tugatildi.", false)
+		}
+	default:
+		return
+	}
+>>>>>>> Stashed changes
 	if err != nil {
-		b.log.Info("telegram /start", "chat", u.ChatID, "err", err)
+		b.log.Info("telegram buyruq", "cmd", cmd, "chat", u.ChatID, "err", err)
 	}
 }

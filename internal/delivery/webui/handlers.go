@@ -135,16 +135,24 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
 	u := userFrom(r.Context())
 	s.render(w, "settings.html", settingsVM{
+<<<<<<< Updated upstream
 		layoutVM:    s.layout("Sozlamalar", r, u),
 		Name:        u.DisplayName(),
 		Handle:      u.Handle(),
 		TelegramID:  u.TelegramID,
 		BotUsername: s.d.BotUsername,
 		Since:       u.CreatedAt.In(s.d.Clock.Now().Location()).Format("02.01.2006"),
+=======
+		layoutVM:   s.layout("Sozlamalar", r, u),
+		TelegramOK: s.d.TelegramOK,
+		Username:   u.Username,
+		Since:      u.CreatedAt.In(s.d.Clock.Now().Location()).Format("02.01.2006"),
+>>>>>>> Stashed changes
 	})
 }
 
 func (s *Server) telegramTest(w http.ResponseWriter, r *http.Request) {
+<<<<<<< Updated upstream
 	err := s.d.Telegram.SendTest(r.Context(), userFrom(r.Context()).ID)
 	if errors.Is(err, usecase.ErrBotBlocked) {
 		s.back(w, r, "/settings", "Bot sizga yoza olmayapti: Telegram'da @"+s.d.BotUsername+" ni oching va Start (yoki Unblock) bosing", "err")
@@ -155,6 +163,13 @@ func (s *Server) telegramTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.back(w, r, "/settings", "Test xabar yuborildi — Telegram'ni tekshiring", "ok")
+=======
+	if err := s.d.Telegram.SendTest(r.Context(), userFrom(r.Context()).ID); err != nil {
+		s.fail(w, r, "/settings", err)
+		return
+	}
+	s.back(w, r, "/settings", "Test xabar yuborildi", "ok")
+>>>>>>> Stashed changes
 }
 
 // lastResponse — faqat administratorlar uchun (API formatini moslashtirishda kerak).

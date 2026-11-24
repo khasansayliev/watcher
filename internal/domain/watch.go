@@ -32,6 +32,12 @@ type NewWatchParams struct {
 // NewWatch biznes qoidalarini tekshirib, foydalanuvchiga tegishli yangi faol kuzatuv yaratadi.
 func NewWatch(owner User, p NewWatchParams, today string, now time.Time) (Watch, error) {
 	p.Filter.CarType = strings.TrimSpace(p.Filter.CarType)
+<<<<<<< Updated upstream
+=======
+	if !owner.HasTelegram() {
+		return Watch{}, NewValidationError("Telegram akkauntingiz topilmadi — qaytadan kiring")
+	}
+>>>>>>> Stashed changes
 	if err := p.Route.Validate(today); err != nil {
 		return Watch{}, err
 	}

@@ -20,7 +20,13 @@ var templatesFS embed.FS
 // ---- Delivery qatlami kutadigan kirish portlari ----
 
 type AuthUseCase interface {
+<<<<<<< Updated upstream
 	Login(ctx context.Context, fields map[string]string) (token string, user domain.User, expires time.Time, err error)
+=======
+	BeginLogin(ctx context.Context) (code, botURL string, err error)
+	BotURL(code string) (string, error)
+	PollLogin(ctx context.Context, code string) (token string, user domain.User, expires time.Time, err error)
+>>>>>>> Stashed changes
 	Authenticate(ctx context.Context, token string) (domain.User, error)
 	Logout(ctx context.Context, token string) error
 }
@@ -68,8 +74,13 @@ type Deps struct {
 	BaseURL       string // tashqi manzil: widget callback'i shundan yasaladi
 	BotUsername   string // widget uchun bot nomi (@siz)
 	MaxWatches    int
+<<<<<<< Updated upstream
 	AdminIDs      []int64 // administratorlarning Telegram ID'lari
 	SecureCookies bool    // BASE_URL https bo'lsa true
+=======
+	AdminIDs      []string // Telegram ID'lar
+	SecureCookies bool     // BASE_URL https bo'lsa true
+>>>>>>> Stashed changes
 }
 
 type Server struct {
@@ -92,7 +103,12 @@ func (s *Server) Handler() http.Handler {
 	// ochiq
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
 	mux.HandleFunc("GET /login", s.loginPage)
+<<<<<<< Updated upstream
 	mux.HandleFunc("GET "+callbackPath, s.telegramCallback)
+=======
+	mux.HandleFunc("POST /login/telegram", s.loginStart)
+	mux.HandleFunc("GET /login/wait", s.loginWait)
+>>>>>>> Stashed changes
 	mux.HandleFunc("POST /logout", s.logout)
 
 	// faqat kirganlar uchun

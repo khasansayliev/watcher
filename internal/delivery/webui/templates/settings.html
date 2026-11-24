@@ -1,5 +1,6 @@
 {{template "head" .}}
 <section class="card">
+<<<<<<< Updated upstream
   <h2>Telegram akkaunt</h2>
   <p><b>{{.Name}}</b>{{if .Handle}} <span class="hint">{{.Handle}}</span>{{end}} <small>· ID {{.TelegramID}} · {{.Since}} dan beri</small></p>
   <p>Bo'sh joy chiqsa, xabar <b>@{{.BotUsername}}</b> boti orqali shu Telegram akkauntga keladi.</p>
@@ -8,5 +9,22 @@
   </div>
   <p class="hint">Xabar kelmasa: Telegram'da <b>@{{.BotUsername}}</b> ni oching va <b>Start</b> bosing.
     Botni bloklagan bo'lsangiz, <b>Unblock</b> qiling. Bot sizga faqat shundan keyin yoza oladi.</p>
+=======
+  <h2>Telegram bildirishnomalari</h2>
+  {{if not .TelegramOK}}
+    <div class="warn">Telegram bot hali sozlanmagan (administrator TELEGRAM_BOT_TOKEN berishi kerak).</div>
+  {{else}}
+    <p>✅ Akkauntingiz Telegram'ga bog'langan. Bo'sh joy chiqsa xabar shu chatga keladi.</p>
+    <div class="row">
+      <form method="post" action="/settings/telegram/test"><button>Test xabar yuborish</button></form>
+    </div>
+    <p class="hint">Xabarlarni to'xtatish uchun kuzatuvni o'chiring. Barcha qurilmalardan chiqish: botga <code>/logout</code> yozing.</p>
+  {{end}}
+</section>
+
+<section class="card">
+  <h2>Akkaunt</h2>
+  <p>{{if .Username}}@{{.Username}}{{else}}Telegram akkaunt{{end}} <small>· {{.Since}} dan beri</small></p>
+>>>>>>> Stashed changes
 </section>
 {{template "foot" .}}

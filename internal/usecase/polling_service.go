@@ -15,8 +15,13 @@ type PollingService struct {
 	admins  []int64
 }
 
+<<<<<<< Updated upstream
 func NewPollingService(repo PollingRuleRepository, watches WatchRepository, c Clock, adminTelegramIDs []int64) *PollingService {
 	return &PollingService{repo: repo, watches: watches, clock: c, admins: adminTelegramIDs}
+=======
+func NewPollingService(repo PollingRuleRepository, watches WatchRepository, c Clock, adminIDs []string) *PollingService {
+	return &PollingService{repo: repo, watches: watches, clock: c, admins: adminIDs}
+>>>>>>> Stashed changes
 }
 
 // Policy — joriy jadval (hamma foydalanuvchi o'qiy oladi: o'z kuzatuvining oralig'ini ko'rish uchun).
@@ -35,9 +40,12 @@ func (s *PollingService) Update(ctx context.Context, actor domain.User, rules []
 	}
 	p.UpdatedAt = s.clock.Now()
 	p.UpdatedBy = actor.DisplayName()
+<<<<<<< Updated upstream
 	if h := actor.Handle(); h != "" && h != p.UpdatedBy {
 		p.UpdatedBy += " (" + h + ")"
 	}
+=======
+>>>>>>> Stashed changes
 	if err := s.repo.Save(ctx, p); err != nil {
 		return domain.PollingPolicy{}, err
 	}
