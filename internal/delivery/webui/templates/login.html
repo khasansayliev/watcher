@@ -12,26 +12,12 @@
   <h1>Watcher</h1>
   <p class="hint">Poyezdga bo'sh joy chiqishi bilan Telegram'ga xabar oling.</p>
   {{if .Error}}<div class="flash err">{{.Error}}</div>{{end}}
-<<<<<<< Updated upstream
-  <div style="margin-top:24px;min-height:48px">
-  {{if .BotUsername}}
-    <script async src="https://telegram.org/js/telegram-widget.js?22"
-      data-telegram-login="{{.BotUsername}}" data-size="large" data-radius="8"
-      data-auth-url="{{.AuthURL}}" data-request-access="write"></script>
-  {{else}}
-    <div class="flash err">Telegram bot sozlanmagan (TELEGRAM_BOT_TOKEN)</div>
-  {{end}}
-  </div>
-  <p class="hint">Telegram oynasida tasdiqlang va bot sizga xabar yuborishiga ruxsat bering —
-    bo'sh joy haqidagi bildirishnomalar shu bot orqali keladi.</p>
-=======
   <form method="post" action="/login/telegram" style="margin-top:24px">
     <button class="tgbtn" type="submit">
       ✈️ Telegram orqali kirish
     </button>
   </form>
   <p class="hint" style="margin-top:16px">Yangi foydalanuvchi bo'lsangiz, akkaunt avtomatik yaratiladi.</p>
->>>>>>> Stashed changes
   <p class="hint" style="margin-top:24px">Biletni sotib olish rasmiy saytda amalga oshiriladi.</p>
 </div>
 </body>

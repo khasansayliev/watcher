@@ -100,24 +100,15 @@ func (r *memUsers) add(u domain.User) domain.User {
 func (r *memUsers) UpsertByTelegram(_ context.Context, p domain.TelegramProfile, now time.Time) (domain.User, error) {
 	r.mu.Lock()
 	for _, u := range r.m {
-<<<<<<< Updated upstream
-		if u.TelegramID == id.TelegramID {
-			u.Username, u.Name = id.Username, id.FullName()
-=======
 		if u.TelegramChatID == p.ID {
 			u.Username, u.Name = p.Username, p.Name
->>>>>>> Stashed changes
 			r.m[u.ID] = u
 			r.mu.Unlock()
 			return u, nil
 		}
 	}
 	r.mu.Unlock()
-<<<<<<< Updated upstream
-	return r.add(domain.User{TelegramID: id.TelegramID, Username: id.Username, Name: id.FullName(), CreatedAt: now}), nil
-=======
 	return r.add(domain.User{TelegramChatID: p.ID, Username: p.Username, Name: p.Name, CreatedAt: now}), nil
->>>>>>> Stashed changes
 }
 func (r *memUsers) Get(_ context.Context, id int64) (domain.User, error) {
 	r.mu.Lock()
@@ -184,8 +175,6 @@ func (r *memSessions) DeleteExpired(_ context.Context, now time.Time) (int64, er
 	return n, nil
 }
 
-<<<<<<< Updated upstream
-=======
 type loginReq struct {
 	user    int64 // 0 = tasdiqlanmagan
 	expires time.Time
@@ -227,7 +216,6 @@ func (r *memLogins) Claim(_ context.Context, code string, now time.Time) (int64,
 	return q.user, nil
 }
 
->>>>>>> Stashed changes
 type memPolicy struct {
 	mu sync.Mutex
 	p  domain.PollingPolicy
@@ -280,12 +268,9 @@ func (f *fakeNotifier) SendText(_ context.Context, chat, text string) error {
 	f.sent = append(f.sent, sentMsg{chat, text})
 	return nil
 }
-<<<<<<< Updated upstream
-=======
 func (f *fakeNotifier) BotURL(code string) (string, error) {
 	return "https://t.me/testbot?start=" + code, nil
 }
->>>>>>> Stashed changes
 func (f *fakeNotifier) count(chat string) int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -298,22 +283,6 @@ func (f *fakeNotifier) count(chat string) int {
 	return n
 }
 
-<<<<<<< Updated upstream
-// fakeVerifier — imzo tekshiruvini simulyatsiya qiladi: valid=false bo'lsa ErrBadSignature.
-type fakeVerifier struct {
-	ident domain.Identity
-	valid bool
-}
-
-func (f *fakeVerifier) Verify(map[string]string) (domain.Identity, error) {
-	if !f.valid {
-		return domain.Identity{}, usecase.ErrBadSignature
-	}
-	return f.ident, nil
-}
-
-=======
->>>>>>> Stashed changes
 type fixedClock struct {
 	mu sync.Mutex
 	t  time.Time
@@ -336,17 +305,10 @@ type env struct {
 	watches  *memWatches
 	users    *memUsers
 	sessions *memSessions
-<<<<<<< Updated upstream
-	search   *fakeSearcher
-	notif    *fakeNotifier
-	clock    *fixedClock
-	verifier *fakeVerifier
-=======
 	logins   *memLogins
 	search   *fakeSearcher
 	notif    *fakeNotifier
 	clock    *fixedClock
->>>>>>> Stashed changes
 	policy   *memPolicy
 
 	monitor  *usecase.Monitor
@@ -361,15 +323,6 @@ var sample = []domain.Train{{Number: "764Ф", Cars: []domain.Car{{Type: "Сид�
 
 func newEnv(maxPerUser, maxSearches int) *env {
 	e := &env{
-<<<<<<< Updated upstream
-		watches:  &memWatches{},
-		users:    newMemUsers(),
-		search:   &fakeSearcher{trains: sample},
-		notif:    &fakeNotifier{},
-		clock:    &fixedClock{t: time.Date(2026, 11, 23, 10, 0, 0, 0, time.UTC)},
-		verifier: &fakeVerifier{valid: true},
-		policy:   &memPolicy{p: domain.DefaultPollingPolicy()},
-=======
 		watches: &memWatches{},
 		users:   newMemUsers(),
 		logins:  &memLogins{m: map[string]loginReq{}},
@@ -377,35 +330,12 @@ func newEnv(maxPerUser, maxSearches int) *env {
 		notif:   &fakeNotifier{},
 		clock:   &fixedClock{t: time.Date(2026, 11, 23, 10, 0, 0, 0, time.UTC)},
 		policy:  &memPolicy{p: domain.DefaultPollingPolicy()},
->>>>>>> Stashed changes
 	}
 	e.sessions = &memSessions{m: map[string]session{}, u: e.users}
 	log := discardLog()
 	e.monitor = usecase.NewMonitor(e.watches, e.policy, e.users, e.search, e.notif, e.clock,
 		usecase.MonitorConfig{Tick: 10 * time.Second, MaxSearchesPerCycle: maxSearches}, log)
 	e.ws = usecase.NewWatchService(e.watches, e.users, e.clock, e.monitor, maxPerUser)
-<<<<<<< Updated upstream
-	e.auth = usecase.NewAuthService(e.verifier, e.users, e.sessions, e.clock, 24*time.Hour)
-	e.tg = usecase.NewTelegramService(e.users, e.notif, "https://watcher.test")
-	e.searchUC = usecase.NewSearchService(e.search, e.monitor, e.clock, 10*time.Second, 0)
-	e.polling = usecase.NewPollingService(e.policy, e.watches, e.clock, []int64{adminTG})
-	return e
-}
-
-// adminTG — testlardagi administratorning Telegram ID'si.
-const adminTG = 999
-
-var tgSeq int64 = 1000
-
-func nextTG() int64 { tgSeq++; return tgSeq }
-
-func (e *env) admin() domain.User {
-	return e.users.add(domain.User{Username: "admin", TelegramID: adminTG})
-}
-
-func (e *env) user(name string) domain.User {
-	return e.users.add(domain.User{Username: name, TelegramID: nextTG()})
-=======
 	e.auth = usecase.NewAuthService(e.users, e.logins, e.sessions, e.notif, e.clock, 24*time.Hour)
 	e.tg = usecase.NewTelegramService(e.users, e.notif)
 	e.searchUC = usecase.NewSearchService(e.search, e.monitor, e.clock, 10*time.Second, 0)
@@ -415,7 +345,6 @@ func (e *env) user(name string) domain.User {
 
 func (e *env) user(chat string) domain.User {
 	return e.users.add(domain.User{Name: chat, TelegramChatID: chat})
->>>>>>> Stashed changes
 }
 
 func discardLog() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }

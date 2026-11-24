@@ -1,4 +1,4 @@
-// Package railway — eticket.railway.uz ichki API'si uchun adapter (usecase.TrainSearcher).
+// Package railway — eticket.uzrailpass.uz (avvalgi eticket.railway.uz) ichki API'si uchun adapter (usecase.TrainSearcher).
 package railway
 
 import (
@@ -28,7 +28,7 @@ const (
 )
 
 type Config struct {
-	BaseURL      string // https://eticket.railway.uz
+	BaseURL      string // https://eticket.uzrailpass.uz
 	Lang         string // uz
 	ManualCookie string // ixtiyoriy: brauzerdan olingan cookie qatori
 	RawDumpPath  string // ixtiyoriy: oxirgi javobni shu faylga yozish
@@ -40,6 +40,7 @@ type Client struct {
 
 	mu      sync.Mutex
 	xsrf    string
+	noXSRF  bool // sayt XSRF cookie bermadi: tokensiz ishlaymiz
 	lastRaw []byte
 }
 
@@ -86,7 +87,9 @@ func (c *Client) searchOnce(ctx context.Context, r domain.Route) ([]domain.Train
 	req.Header.Set("Origin", c.cfg.BaseURL)
 	req.Header.Set("Referer", c.BuyURL())
 	req.Header.Set("User-Agent", userAgent)
-	req.Header.Set("X-XSRF-TOKEN", tok)
+	if tok != "" {
+		req.Header.Set("X-XSRF-TOKEN", tok)
+	}
 	if c.cfg.ManualCookie != "" {
 		req.Header.Set("Cookie", c.cfg.ManualCookie)
 	}
@@ -116,7 +119,7 @@ func (c *Client) searchOnce(ctx context.Context, r domain.Route) ([]domain.Train
 func (c *Client) token(ctx context.Context) (string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.xsrf != "" {
+	if c.xsrf != "" || c.noXSRF {
 		return c.xsrf, nil
 	}
 	if c.cfg.ManualCookie != "" {
@@ -145,12 +148,19 @@ func (c *Client) token(ctx context.Context) (string, error) {
 			return ck.Value, nil
 		}
 	}
-	return "", fmt.Errorf("XSRF-TOKEN cookie olinmadi (HTTP %d). Brauzerdan cookie'ni RAILWAY_COOKIE ga bering", resp.StatusCode)
+	// Sayt hozir XSRF cookie bermaydi va API uni talab qilmaydi. Bosh sahifa ochilgan bo'lsa
+	// (2xx) tokensiz davom etamiz; xato bo'lsa (masalan 504) keyingi urinishda qayta ochiladi.
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		c.noXSRF = true
+		return "", nil
+	}
+	return "", fmt.Errorf("bosh sahifa ochilmadi (HTTP %d). Sayt vaqtincha ishlamayotgan bo'lishi mumkin", resp.StatusCode)
 }
 
 func (c *Client) resetToken() {
 	c.mu.Lock()
 	c.xsrf = ""
+	c.noXSRF = false
 	c.mu.Unlock()
 }
 

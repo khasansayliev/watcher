@@ -11,14 +11,6 @@ import (
 	"github.com/khasansayliev/watcher/internal/domain"
 )
 
-<<<<<<< Updated upstream
-// ErrBadSignature — Telegram imzosi mos kelmadi (ma'lumot soxta yoki buzilgan).
-var ErrBadSignature = errors.New("telegram imzosi noto'g'ri")
-
-// AuthService — Telegram orqali kirish va sessiyalar.
-type AuthService struct {
-	verifier IdentityVerifier
-=======
 const loginRequestTTL = 10 * time.Minute
 
 // AuthService — Telegram orqali kirish/ro'yxatdan o'tish va sessiyalar.
@@ -28,7 +20,6 @@ const loginRequestTTL = 10 * time.Minute
 // (yangi bo'lsa akkaunt yaratiladi) → brauzer PollLogin orqali sessiya tokenini oladi.
 // Parol yo'q; telefon/akkaunt egaligi Telegram tomonidan tasdiqlanadi.
 type AuthService struct {
->>>>>>> Stashed changes
 	users    UserRepository
 	logins   LoginRequestRepository
 	sessions SessionRepository
@@ -37,24 +28,6 @@ type AuthService struct {
 	ttl      time.Duration
 }
 
-<<<<<<< Updated upstream
-func NewAuthService(v IdentityVerifier, users UserRepository, sessions SessionRepository, c Clock, ttl time.Duration) *AuthService {
-	return &AuthService{verifier: v, users: users, sessions: sessions, clock: c, ttl: ttl}
-}
-
-// Login Telegram Login Widget qaytargan maydonlarni tekshiradi va sessiya ochadi.
-// Token faqat foydalanuvchiga (cookie) beriladi; bazada uning sha256 xeshi saqlanadi.
-func (s *AuthService) Login(ctx context.Context, fields map[string]string) (token string, user domain.User, expires time.Time, err error) {
-	ident, err := s.verifier.Verify(fields)
-	if err != nil {
-		return "", domain.User{}, time.Time{}, err
-	}
-	now := s.clock.Now()
-	if err := ident.Validate(now); err != nil {
-		return "", domain.User{}, time.Time{}, err
-	}
-	user, err = s.users.UpsertByIdentity(ctx, ident, now)
-=======
 func NewAuthService(users UserRepository, logins LoginRequestRepository, sessions SessionRepository, n Notifier, c Clock, ttl time.Duration) *AuthService {
 	return &AuthService{users: users, logins: logins, sessions: sessions, notifier: n, clock: c, ttl: ttl}
 }
@@ -112,7 +85,6 @@ func (s *AuthService) PollLogin(ctx context.Context, code string) (token string,
 	}
 	now := s.clock.Now()
 	userID, err := s.logins.Claim(ctx, code, now)
->>>>>>> Stashed changes
 	if err != nil {
 		return "", domain.User{}, time.Time{}, err
 	}

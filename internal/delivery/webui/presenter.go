@@ -13,13 +13,8 @@ import (
 // View-modellar: shablonlar faqat tayyor qiymatlar bilan ishlaydi, mantiq yo'q.
 
 type userVM struct {
-<<<<<<< Updated upstream
-	Name, Handle, Avatar string
-	IsAdmin              bool
-=======
 	Name    string
 	IsAdmin bool
->>>>>>> Stashed changes
 }
 
 type layoutVM struct {
@@ -30,7 +25,7 @@ type layoutVM struct {
 }
 
 type loginVM struct {
-	Error, BotUsername, AuthURL string
+	Error string
 }
 
 type loginWaitVM struct {
@@ -47,13 +42,8 @@ type dashboardVM struct {
 
 type settingsVM struct {
 	layoutVM
-<<<<<<< Updated upstream
-	Name, Handle, BotUsername, Since string
-	TelegramID                       int64
-=======
 	TelegramOK      bool
 	Username, Since string
->>>>>>> Stashed changes
 }
 
 type watchVM struct {
@@ -95,11 +85,7 @@ type presenter struct {
 func (p presenter) layout(title, flash, kind string, u domain.User, admin bool, st MonitorStatus) layoutVM {
 	vm := layoutVM{
 		Title: title, Flash: flash, FlashKind: kind,
-<<<<<<< Updated upstream
-		User: &userVM{Name: u.DisplayName(), Handle: u.Handle(), Avatar: u.PhotoURL, IsAdmin: admin},
-=======
 		User: &userVM{Name: u.DisplayName(), IsAdmin: admin},
->>>>>>> Stashed changes
 	}
 	if until := st.PausedUntil(); p.clock.Now().Before(until) {
 		vm.Paused = true

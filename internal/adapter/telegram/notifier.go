@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"html"
+	"net/url"
 	"strings"
 
 	"github.com/khasansayliev/watcher/internal/domain"
@@ -32,8 +33,6 @@ func (n *Notifier) SendText(ctx context.Context, chatID, text string) error {
 	return n.c.SendMessage(ctx, chatID, text, false)
 }
 
-<<<<<<< Updated upstream
-=======
 func (n *Notifier) BotURL(code string) (string, error) {
 	name, err := n.c.Username(context.Background())
 	if err != nil {
@@ -42,7 +41,6 @@ func (n *Notifier) BotURL(code string) (string, error) {
 	return "https://t.me/" + name + "?start=" + url.QueryEscape(code), nil
 }
 
->>>>>>> Stashed changes
 func (n *Notifier) NotifyAvailability(ctx context.Context, chatID string, r domain.Route, ms []domain.Match) error {
 	return n.c.SendMessage(ctx, chatID, n.format(r, ms), true)
 }

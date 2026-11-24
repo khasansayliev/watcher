@@ -13,16 +13,7 @@ import (
 
 const (
 	sessionCookie = "watcher_session"
-<<<<<<< Updated upstream
-	// loginCookie login sahifasi ochilganda qo'yiladi va callback'da talab qilinadi:
-	// boshqa birov tayyorlab yuborgan (o'zining imzolangan) havola bilan
-	// foydalanuvchini begona akkauntga kiritib qo'yishning (login CSRF) oldini oladi.
-	loginCookie   = "watcher_login"
-	callbackPath  = "/auth/telegram/callback"
-	loginStateAge = 10 * time.Minute
-=======
 	loginCookie   = "watcher_login" // brauzerga bog'langan kirish kodi (HttpOnly)
->>>>>>> Stashed changes
 )
 
 type ctxKey struct{}
@@ -59,61 +50,12 @@ func (s *Server) currentUser(r *http.Request) (domain.User, error) {
 	return s.d.Auth.Authenticate(r.Context(), c.Value)
 }
 
-// loginPage Telegram Login Widget'ni ko'rsatadi.
+// loginPage "Telegram orqali kirish" tugmasini ko'rsatadi.
 func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
 	if _, err := s.currentUser(r); err == nil {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-<<<<<<< Updated upstream
-	nonce, err := usecase.RandomToken(16)
-	if err != nil {
-		http.Error(w, "server xatosi", http.StatusInternalServerError)
-		return
-	}
-	http.SetCookie(w, &http.Cookie{
-		Name: loginCookie, Value: nonce, Path: callbackPath,
-		MaxAge: int(loginStateAge.Seconds()), HttpOnly: true, Secure: s.d.SecureCookies, SameSite: http.SameSiteLaxMode,
-	})
-	s.render(w, "login.html", loginVM{
-		Error:       r.URL.Query().Get("err"),
-		BotUsername: s.d.BotUsername,
-		AuthURL:     s.d.BaseURL + callbackPath,
-	})
-}
-
-// telegramCallback — widget foydalanuvchi tasdiqlagach shu manzilga imzolangan maydonlar bilan yo'naltiradi:
-// ?id=...&first_name=...&username=...&photo_url=...&auth_date=...&hash=...
-func (s *Server) telegramCallback(w http.ResponseWriter, r *http.Request) {
-	if _, err := r.Cookie(loginCookie); err != nil {
-		loginError(w, r, "Kirish sessiyasi topilmadi — qaytadan urinib ko'ring")
-		return
-	}
-	http.SetCookie(w, &http.Cookie{Name: loginCookie, Value: "", Path: callbackPath, MaxAge: -1})
-
-	fields := map[string]string{}
-	for k, v := range r.URL.Query() {
-		if len(v) != 1 {
-			loginError(w, r, "Noto'g'ri so'rov")
-			return
-		}
-		fields[k] = v[0]
-	}
-
-	token, _, expires, err := s.d.Auth.Login(r.Context(), fields)
-	if err != nil {
-		var ve *domain.ValidationError
-		switch {
-		case errors.As(err, &ve):
-			loginError(w, r, ve.Msg)
-		case errors.Is(err, usecase.ErrBadSignature):
-			slog.Warn("telegram login: imzo noto'g'ri", "remote", r.RemoteAddr)
-			loginError(w, r, "Telegram ma'lumoti tasdiqlanmadi")
-		default:
-			slog.Error("telegram login", "err", err)
-			loginError(w, r, "Telegram orqali kirib bo'lmadi")
-		}
-=======
 	vm := loginVM{Error: r.URL.Query().Get("err")}
 	s.render(w, "login.html", vm)
 }
@@ -130,7 +72,6 @@ func (s *Server) loginStart(w http.ResponseWriter, r *http.Request) {
 		}
 		slog.Error("kirish so'rovi", "err", err)
 		loginError(w, r, "Kirishni boshlab bo'lmadi, keyinroq urinib ko'ring")
->>>>>>> Stashed changes
 		return
 	}
 	http.SetCookie(w, &http.Cookie{

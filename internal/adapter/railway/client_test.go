@@ -76,3 +76,57 @@ func TestClientMapsRateLimit(t *testing.T) {
 		t.Fatalf("UpstreamError kutilgan, olindi %v", err)
 	}
 }
+
+// Sayt XSRF cookie bermasa (hozirgi holat) ham qidiruv tokensiz ishlashi kerak.
+func TestClientSearchWithoutXSRF(t *testing.T) {
+	homeHits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/uz/":
+			homeHits++
+		case r.Method == http.MethodPost && r.URL.Path == searchPath:
+			if r.Header.Get("X-XSRF-TOKEN") != "" {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			io.WriteString(w, sampleResp)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	c := New(Config{BaseURL: srv.URL, Lang: "uz"})
+	for i := 0; i < 2; i++ {
+		if _, err := c.Search(context.Background(), domain.Route{From: "1", To: "2", Date: "2026-12-05"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if homeHits != 1 {
+		t.Fatalf("bosh sahifa faqat bir marta ochilishi kerak, ochildi %d", homeHits)
+	}
+}
+
+// Bosh sahifa 504 qaytarsa, xato qaytadi va keyingi urinishda qayta ochiladi.
+func TestClientHomePageFailureRetries(t *testing.T) {
+	fail := true
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/uz/" && fail:
+			w.WriteHeader(http.StatusGatewayTimeout)
+		case r.URL.Path == searchPath:
+			io.WriteString(w, sampleResp)
+		}
+	}))
+	defer srv.Close()
+
+	c := New(Config{BaseURL: srv.URL, Lang: "uz"})
+	r := domain.Route{From: "1", To: "2", Date: "2026-12-05"}
+	if _, err := c.Search(context.Background(), r); err == nil {
+		t.Fatal("504 da xato kutilgan")
+	}
+	fail = false
+	if _, err := c.Search(context.Background(), r); err != nil {
+		t.Fatalf("sayt tiklangach ishlashi kerak: %v", err)
+	}
+}

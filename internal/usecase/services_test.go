@@ -3,6 +3,7 @@ package usecase_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -10,19 +11,6 @@ import (
 	"github.com/khasansayliev/watcher/internal/usecase"
 )
 
-<<<<<<< Updated upstream
-func TestAuthLoginAndSession(t *testing.T) {
-	e := newEnv(10, 0)
-	ctx := context.Background()
-	e.verifier.ident = domain.Identity{TelegramID: 777, FirstName: "Ali", Username: "ali", AuthDate: e.clock.Now().Add(-time.Minute)}
-
-	token, u, _, err := e.auth.Login(ctx, map[string]string{"id": "777"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(token) < 40 || u.TelegramID != 777 || u.ChatID() != "777" {
-		t.Fatalf("token/user: %q %+v", token, u)
-=======
 func startLogin(t *testing.T, e *env, p domain.TelegramProfile) string {
 	t.Helper()
 	code, link, err := e.auth.BeginLogin(context.Background())
@@ -66,7 +54,6 @@ func TestTelegramLoginAndSession(t *testing.T) {
 	}
 	if len(token) < 40 {
 		t.Fatalf("token juda qisqa: %q", token)
->>>>>>> Stashed changes
 	}
 	if _, ok := e.sessions.m[token]; ok {
 		t.Fatal("bazada token emas, uning xeshi saqlanishi kerak")
@@ -79,54 +66,24 @@ func TestTelegramLoginAndSession(t *testing.T) {
 	}
 
 	// Qayta kirish — yangi user yaratilmaydi, profil yangilanadi.
-<<<<<<< Updated upstream
-	e.verifier.ident.Username = "ali_new"
-	_, u2, _, _ := e.auth.Login(ctx, nil)
-	if u2.ID != u.ID || u2.Username != "ali_new" {
-		t.Fatalf("bitta Telegram akkaunt — bitta foydalanuvchi: %+v", u2)
-=======
 	code2 := startLogin(t, e, domain.TelegramProfile{ID: "555", Username: "ali2", Name: "Ali V"})
 	_, u2, _, err := e.auth.PollLogin(ctx, code2)
 	if err != nil || u2.ID != u.ID || u2.Username != "ali2" {
 		t.Fatalf("bitta Telegram akkaunt — bitta foydalanuvchi: %+v %v", u2, err)
->>>>>>> Stashed changes
 	}
 
 	_ = e.auth.Logout(ctx, token)
 	if _, err := e.auth.Authenticate(ctx, token); !errors.Is(err, domain.ErrUnauthorized) {
 		t.Fatal("chiqqandan keyin sessiya yaroqsiz bo'lishi kerak")
 	}
-<<<<<<< Updated upstream
-	token, _, _, _ = e.auth.Login(ctx, nil)
-=======
 
 	token, _, _, _ = e.auth.PollLogin(ctx, startLogin(t, e, prof))
->>>>>>> Stashed changes
 	e.clock.add(25 * time.Hour)
 	if _, err := e.auth.Authenticate(ctx, token); !errors.Is(err, domain.ErrUnauthorized) {
 		t.Fatal("muddati o'tgan sessiya rad etilishi kerak")
 	}
 }
 
-<<<<<<< Updated upstream
-func TestAuthRejectsBadSignatureAndStaleData(t *testing.T) {
-	e := newEnv(10, 0)
-	ctx := context.Background()
-
-	e.verifier.valid = false
-	if _, _, _, err := e.auth.Login(ctx, nil); !errors.Is(err, usecase.ErrBadSignature) {
-		t.Fatalf("soxta imzo rad etilishi kerak: %v", err)
-	}
-
-	e.verifier.valid = true
-	e.verifier.ident = domain.Identity{TelegramID: 777, AuthDate: e.clock.Now().Add(-2 * time.Hour)}
-	var ve *domain.ValidationError
-	if _, _, _, err := e.auth.Login(ctx, nil); !errors.As(err, &ve) {
-		t.Fatalf("eskirgan (qayta ishlatilgan) ma'lumot rad etilishi kerak: %v", err)
-	}
-	if len(e.users.m) != 0 || len(e.sessions.m) != 0 {
-		t.Fatal("rad etilgan urinish foydalanuvchi yoki sessiya yaratmasligi kerak")
-=======
 func TestLoginRequestExpiresAndIsOneShot(t *testing.T) {
 	e := newEnv(10, 0)
 	ctx := context.Background()
@@ -177,7 +134,6 @@ func TestLogoutAll(t *testing.T) {
 	}
 	if _, err := e.auth.Authenticate(ctx, other); err != nil {
 		t.Fatal("boshqa foydalanuvchi sessiyasi saqlanishi kerak")
->>>>>>> Stashed changes
 	}
 }
 
@@ -220,25 +176,12 @@ func TestWatchLimitPerUser(t *testing.T) {
 	}
 }
 
-<<<<<<< Updated upstream
-func TestTelegramSendTest(t *testing.T) {
-	e := newEnv(10, 0)
-	ctx := context.Background()
-	u := e.user("A")
-	if err := e.tg.SendTest(ctx, u.ID); err != nil || e.notif.count(u.ChatID()) != 1 {
-		t.Fatalf("test xabar o'z chatiga borishi kerak: %v", err)
-	}
-	e.notif.blocked = map[string]bool{u.ChatID(): true}
-	if err := e.tg.SendTest(ctx, u.ID); !errors.Is(err, usecase.ErrBotBlocked) {
-		t.Fatalf("bloklangan bot uchun ErrBotBlocked kutilgan: %v", err)
-=======
 func TestTestMessage(t *testing.T) {
 	e := newEnv(10, 0)
 	ctx := context.Background()
 	u := e.user("555")
 	if err := e.tg.SendTest(ctx, u.ID); err != nil || e.notif.count("555") != 1 {
 		t.Fatalf("test xabar yuborilmadi: %v", err)
->>>>>>> Stashed changes
 	}
 }
 
@@ -266,13 +209,8 @@ func TestSearchThrottlePerUser(t *testing.T) {
 func TestPollingUpdateAdminOnly(t *testing.T) {
 	e := newEnv(10, 0)
 	ctx := context.Background()
-<<<<<<< Updated upstream
-	user := e.user("ali")
-	admin := e.admin()
-=======
 	user := e.users.add(domain.User{TelegramChatID: "100"})
 	admin := e.users.add(domain.User{TelegramChatID: "900", Name: "Admin"})
->>>>>>> Stashed changes
 	rules := []domain.PollingRule{{MaxDaysLeft: 3, Interval: 30 * time.Second}, {MaxDaysLeft: 0, Interval: 6 * time.Hour}}
 
 	if _, err := e.polling.Update(ctx, user, rules); !errors.Is(err, domain.ErrForbidden) {
@@ -285,11 +223,7 @@ func TestPollingUpdateAdminOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-<<<<<<< Updated upstream
-	if p.UpdatedBy != "@admin" || p.UpdatedAt.IsZero() {
-=======
 	if p.UpdatedBy != "Admin" || p.UpdatedAt.IsZero() {
->>>>>>> Stashed changes
 		t.Fatalf("kim/qachon yozilmadi: %+v", p)
 	}
 	var ve *domain.ValidationError
@@ -309,11 +243,7 @@ func TestPollingStats(t *testing.T) {
 	mustCreate(t, e, b, "2900000", "2900700", "2026-11-24") // xuddi shu yo'nalish
 	mustCreate(t, e, a, "2900000", "2900800", "2027-02-01")
 
-<<<<<<< Updated upstream
-	stats, err := e.polling.Stats(ctx, e.admin())
-=======
 	stats, err := e.polling.Stats(ctx, e.users.add(domain.User{TelegramChatID: "900"}))
->>>>>>> Stashed changes
 	if err != nil {
 		t.Fatal(err)
 	}
