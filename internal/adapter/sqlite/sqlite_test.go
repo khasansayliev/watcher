@@ -351,6 +351,13 @@ func TestAdminQueries(t *testing.T) {
 	if all[0].ID != wb.ID || all[0].Owner.Name != "B" || !all[0].Owner.Disabled {
 		t.Fatalf("eng yangisi va egasi: %+v", all[0])
 	}
+	// admin belgilagan oraliq saqlanadi (soniyagacha) va ro'yxatlarda ko'rinadi
+	if _, err := watches.Update(ctx, wa2.ID, func(w *domain.Watch) { w.CheckEvery = 90 * time.Second }); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := watches.Get(ctx, wa2.ID); got.CheckEvery != 90*time.Second {
+		t.Fatalf("CheckEvery saqlanmadi: %s", got.CheckEvery)
+	}
 	byA, total, _ := watches.ListAll(ctx, a.ID, 10, 0)
 	if total != 2 || len(byA) != 2 {
 		t.Fatalf("A kuzatuvlari: %d", total)
@@ -359,6 +366,9 @@ func TestAdminQueries(t *testing.T) {
 	for _, x := range byA {
 		if x.ID == wa1.ID {
 			adminOff = x.AdminDisabled
+		}
+		if x.ID == wa2.ID && x.CheckEvery != 90*time.Second {
+			t.Fatalf("ListAll CheckEvery'ni qaytarishi kerak: %s", x.CheckEvery)
 		}
 	}
 	if !adminOff {

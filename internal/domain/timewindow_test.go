@@ -110,3 +110,26 @@ func TestSettingsCheckCreate(t *testing.T) {
 		t.Fatal("standart rejim 'approved' bo'lishi kerak")
 	}
 }
+
+func TestWatchIntervalAndValidation(t *testing.T) {
+	p := DefaultPollingPolicy()
+	w := Watch{Route: Route{Date: "2026-12-05"}}
+	if got := w.IntervalIn(p, "2026-11-23"); got != time.Hour { // 12 kun: "30 kundan kam"
+		t.Fatalf("jadval: %s", got)
+	}
+	w.CheckEvery = 45 * time.Second
+	if got := w.IntervalIn(p, "2026-11-23"); got != 45*time.Second {
+		t.Fatalf("alohida: %s", got)
+	}
+	for _, d := range []time.Duration{0, MinCheckInterval, MaxCheckInterval} {
+		if err := ValidateCheckEvery(d); err != nil {
+			t.Errorf("%s: %v", d, err)
+		}
+	}
+	for _, d := range []time.Duration{time.Second, MinCheckInterval - 1, MaxCheckInterval + 1, -time.Hour} {
+		var ve *ValidationError
+		if err := ValidateCheckEvery(d); !errors.As(err, &ve) {
+			t.Errorf("%s rad etilishi kerak: %v", d, err)
+		}
+	}
+}

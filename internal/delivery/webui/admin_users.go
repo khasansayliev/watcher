@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/khasansayliev/watcher/internal/domain"
 	"github.com/khasansayliev/watcher/internal/pkg/textfmt"
@@ -78,6 +79,9 @@ type adminWatchVM struct {
 	LastCheck, LastStatus    string
 	Matches                  int
 	AdminDisabled            bool
+	Interval                 string // "har 5 daqiqa"
+	IntervalCustom           bool   // admin belgilagan (jadvaldan tashqari)
+	EveryValue, EveryUnit    string // forma uchun joriy alohida oraliq
 }
 
 type adminWatchesVM struct {
@@ -266,13 +270,22 @@ func (s *Server) adminWatches(w http.ResponseWriter, r *http.Request) {
 		extra = url.Values{"user": {strconv.FormatInt(userID, 10)}}
 	}
 	vm.Pager = newPager(pg.Pager, extra)
-	now := s.d.Clock.Now()
+	now, today := s.d.Clock.Now(), s.d.Clock.Today()
+	policy, perr := s.d.Polling.Policy(r.Context())
+	if perr != nil {
+		policy = domain.DefaultPollingPolicy()
+	}
 	for _, x := range pg.Watches {
 		row := adminWatchVM{
 			ID: x.ID, OwnerID: x.UserID, Owner: x.Owner.DisplayName(),
 			RouteLabel: s.p.routeLabel(x.Route), Date: x.Route.Date, Filter: filterLabel(x.Filter),
 			LastCheck: textfmt.Ago(x.LastCheck, now), LastStatus: x.LastStatus, Matches: x.LastMatches,
 			AdminDisabled: x.AdminDisabled,
+			Interval:      "har " + textfmt.Interval(x.IntervalIn(policy, today)), IntervalCustom: x.CheckEvery > 0,
+			EveryUnit: "m",
+		}
+		if x.CheckEvery > 0 {
+			row.EveryValue, row.EveryUnit = splitInterval(x.CheckEvery)
 		}
 		switch {
 		case x.AdminDisabled:
@@ -312,4 +325,36 @@ func (s *Server) adminWatchDisabled(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.backTo(w, r, back, "Kuzatuv qayta yoqildi", "ok")
+}
+
+// adminWatchInterval kuzatuv uchun alohida tekshiruv oralig'ini belgilaydi yoki (reset=1 / bo'sh qiymat) jadvalga qaytaradi.
+func (s *Server) adminWatchInterval(w http.ResponseWriter, r *http.Request) {
+	u, ok := s.adminOnly(w, r)
+	if !ok {
+		return
+	}
+	id, ok := pathID(r)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	back := adminBack(r, "/admin/watches")
+	var every time.Duration
+	if val := strings.TrimSpace(r.FormValue("v")); r.FormValue("reset") == "" && val != "" {
+		n, err := strconv.Atoi(val)
+		if err != nil || n <= 0 {
+			s.backTo(w, r, back, "Oraliq musbat butun son bo'lishi kerak", "err")
+			return
+		}
+		every = time.Duration(n) * unitOf(r.FormValue("u"))
+	}
+	if err := s.d.Admin.SetWatchInterval(r.Context(), u, id, every); err != nil {
+		s.backTo(w, r, back, userMessage(err), "err")
+		return
+	}
+	if every == 0 {
+		s.backTo(w, r, back, "Kuzatuv umumiy jadval oralig'iga qaytarildi", "ok")
+		return
+	}
+	s.backTo(w, r, back, "Kuzatuv oralig'i belgilandi: har "+textfmt.Interval(every)+" (keyingi sikldan kuchga kiradi)", "ok")
 }

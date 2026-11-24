@@ -198,13 +198,14 @@ func TestAdminPagesRender(t *testing.T) {
 		layoutVM:  layoutVM{User: &userVM{Name: "Admin", IsAdmin: true}, AdminTab: "watches"},
 		OwnerName: "Ali", Total: 2, Back: "/admin/watches?user=1",
 		Watches: []adminWatchVM{
-			{ID: 10, OwnerID: 1, Owner: "Ali", RouteLabel: "Toshkent → Buxoro", Date: "2026-12-05", Filter: "—", State: "faol", StateClass: "ok"},
+			{ID: 10, OwnerID: 1, Owner: "Ali", RouteLabel: "Toshkent → Buxoro", Date: "2026-12-05", Filter: "—", State: "faol", StateClass: "ok",
+				Interval: "har 30 soniya", IntervalCustom: true, EveryValue: "30", EveryUnit: "s"},
 			{ID: 11, OwnerID: 1, Owner: "Ali", RouteLabel: "A → B", State: "admin to'xtatgan", StateClass: "err", AdminDisabled: true},
 		},
 		Pager: newPager(usecase.Pager{Page: 1, Pages: 2}, url.Values{"user": {"1"}}),
 	})
 	for _, want := range []string{`class="on">Kuzatuvlar`, "Hamma kuzatuvlar", "/admin/watches/10/disabled", `name="v" value="1">To'xtat`,
-		`name="v" value="0">Yoq`, `href="?page=2&amp;user=1"`, "admin to&#39;xtatgan"} {
+		`name="v" value="0">Yoq`, `href="?page=2&amp;user=1"`, "admin to&#39;xtatgan", "/admin/watches/10/interval", "har 30 soniya", `value="30"`, "Jadvalga", "jadval bo'yicha"} {
 		if !strings.Contains(watches, want) {
 			t.Errorf("admin_watches: %q yo'q\n%s", want, grepLines(watches, "page=", "to&#39;xtatgan"))
 		}

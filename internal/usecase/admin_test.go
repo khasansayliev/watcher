@@ -341,3 +341,108 @@ func TestCreationModeControlsMonitoring(t *testing.T) {
 		t.Fatal("adminga 'ruxsat yo'q' yozilmasligi kerak")
 	}
 }
+
+func TestAdminCustomInterval(t *testing.T) {
+	e := newEnv(10, 0)
+	ctx := context.Background()
+	admin := e.admin900()
+	u := e.user("A")
+	w := mustCreate(t, e, u, "2900000", "2900800", "2026-12-05") // 12 kun qolgan: jadval bo'yicha 1 soat
+	e.monitor.RunCycle(ctx, 0)
+	if e.search.calls != 1 {
+		t.Fatal("birinchi tekshiruv")
+	}
+
+	// Oddiy foydalanuvchi belgilay olmaydi; noto'g'ri qiymatlar rad etiladi.
+	if err := e.admin.SetWatchInterval(ctx, u, w.ID, time.Minute); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("faqat admin: %v", err)
+	}
+	var ve *domain.ValidationError
+	for _, bad := range []time.Duration{5 * time.Second, 8 * 24 * time.Hour, -time.Minute} {
+		if err := e.admin.SetWatchInterval(ctx, admin, w.ID, bad); !errors.As(err, &ve) {
+			t.Fatalf("%s rad etilishi kerak: %v", bad, err)
+		}
+	}
+
+	// 30 soniya: jadvaldagi 1 soatdan tezroq tekshiriladi.
+	if err := e.admin.SetWatchInterval(ctx, admin, w.ID, 30*time.Second); err != nil {
+		t.Fatal(err)
+	}
+	e.clock.add(20 * time.Second)
+	e.monitor.RunCycle(ctx, 0)
+	if e.search.calls != 1 {
+		t.Fatalf("30 soniya hali o'tmadi: %d", e.search.calls)
+	}
+	e.clock.add(15 * time.Second)
+	e.monitor.RunCycle(ctx, 0)
+	if e.search.calls != 2 {
+		t.Fatalf("alohida oraliq jadvaldan tezroq ishlashi kerak: %d", e.search.calls)
+	}
+
+	// 3 soat: jadvaldagi 1 soatdan sekinroq.
+	_ = e.admin.SetWatchInterval(ctx, admin, w.ID, 3*time.Hour)
+	e.clock.add(2 * time.Hour)
+	e.monitor.RunCycle(ctx, 0)
+	if e.search.calls != 2 {
+		t.Fatalf("3 soatlik oraliq jadvaldan sekinroq bo'lishi kerak: %d", e.search.calls)
+	}
+	e.clock.add(61 * time.Minute)
+	e.monitor.RunCycle(ctx, 0)
+	if e.search.calls != 3 {
+		t.Fatalf("3 soatdan keyin tekshirilishi kerak: %d", e.search.calls)
+	}
+
+	// 0 — jadvalga qaytish.
+	_ = e.admin.SetWatchInterval(ctx, admin, w.ID, 0)
+	if got, _ := e.watches.Get(ctx, w.ID); got.CheckEvery != 0 {
+		t.Fatal("qaytarilmadi")
+	}
+	e.clock.add(61 * time.Minute)
+	e.monitor.RunCycle(ctx, 0)
+	if e.search.calls != 4 {
+		t.Fatalf("jadval (1 soat) bo'yicha: %d", e.search.calls)
+	}
+}
+
+func TestSameRouteWatchesKeepOwnIntervals(t *testing.T) {
+	e := newEnv(10, 0)
+	ctx := context.Background()
+	admin := e.admin900()
+	a, b := e.user("A"), e.user("B")
+	wa := mustCreate(t, e, a, "2900000", "2900800", "2026-12-05")
+	wb := mustCreate(t, e, b, "2900000", "2900800", "2026-12-05")
+	_ = e.admin.SetWatchInterval(ctx, admin, wa.ID, 30*time.Second) // a tez, b jadval bo'yicha (1 soat)
+
+	e.monitor.RunCycle(ctx, 0) // ikkalasi ham birinchi marta
+	if e.search.calls != 1 || len(e.logs.forWatch(wa.ID)) != 1 || len(e.logs.forWatch(wb.ID)) != 1 {
+		t.Fatal("birinchi siklda bitta so'rov, ikkala kuzatuv baholanadi")
+	}
+	e.clock.add(40 * time.Second)
+	e.monitor.RunCycle(ctx, 0)
+	if e.search.calls != 2 {
+		t.Fatalf("a vaqti keldi — bitta so'rov: %d", e.search.calls)
+	}
+	if len(e.logs.forWatch(wa.ID)) != 2 {
+		t.Fatal("a ikkinchi marta baholanishi kerak")
+	}
+	if len(e.logs.forWatch(wb.ID)) != 1 {
+		t.Fatal("b ning oralig'i (1 soat) buzilmasligi kerak: u qayta baholanmaydi")
+	}
+}
+
+func TestTierLoadCountsCustomIntervals(t *testing.T) {
+	policy := domain.DefaultPollingPolicy()
+	ws := []domain.Watch{
+		{ID: 1, Route: domain.Route{From: "1", To: "2", Date: "2026-11-24"}},                               // jadval: 10 s
+		{ID: 2, Route: domain.Route{From: "1", To: "3", Date: "2026-11-24"}, CheckEvery: time.Minute},      // alohida
+		{ID: 3, Route: domain.Route{From: "1", To: "3", Date: "2026-11-24"}, CheckEvery: 30 * time.Second}, // xuddi shu yo'nalish, tezroq
+	}
+	tiers := usecase.TierLoad(policy, ws, "2026-11-24")
+	first, last := tiers[0], tiers[len(tiers)-1]
+	if first.Watches != 1 || first.Routes != 1 || first.RequestsPerHour != 360 {
+		t.Fatalf("jadval bosqichi: %+v", first)
+	}
+	if !last.Custom || last.Watches != 2 || last.Routes != 1 || last.RequestsPerHour != 120 {
+		t.Fatalf("alohida oraliqlar (eng qisqasi 30 s => 120/soat): %+v", last)
+	}
+}

@@ -124,7 +124,7 @@ func (p presenter) watches(ws []domain.Watch, policy domain.PollingPolicy) []wat
 			Active:        w.Active,
 			AdminDisabled: w.AdminDisabled,
 			Matches:       w.LastMatches,
-			Interval:      "har " + textfmt.Interval(policy.IntervalFor(w.Route.Date, today)),
+			Interval:      "har " + textfmt.Interval(w.IntervalIn(policy, today)),
 			SearchURL:     "/search?" + searchQuery(w).Encode(),
 		}
 		if !w.LastNotified.IsZero() {

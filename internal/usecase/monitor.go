@@ -243,7 +243,9 @@ func (m *Monitor) group(ctx context.Context, watches []domain.Watch) []routeGrou
 	return out
 }
 
-// due faqat oralig'i o'tgan yo'nalishlarni qoldiradi.
+// due faqat vaqti kelgan kuzatuvlarni qoldiradi. Har bir kuzatuv o'z oralig'ida tekshiriladi:
+// admin belgilagani yoki jadvaldagisi. Yo'nalishda vaqti kelgani bo'lsa, saytga bitta so'rov yuboriladi
+// va faqat vaqti kelgan kuzatuvlar baholanadi (boshqalarining oralig'i buzilmaydi).
 func (m *Monitor) due(ctx context.Context, groups []routeGroup) []routeGroup {
 	policy, err := m.policies.Get(ctx)
 	if err != nil {
@@ -253,7 +255,19 @@ func (m *Monitor) due(ctx context.Context, groups []routeGroup) []routeGroup {
 	now, today := m.clock.Now(), m.clock.Today()
 	out := groups[:0]
 	for _, g := range groups {
-		if g.lastCheck.IsZero() || now.Sub(g.lastCheck)+dueSlack >= policy.IntervalFor(g.route.Date, today) {
+		var dueWatches []domain.Watch
+		var oldest time.Time
+		first := true
+		for _, w := range g.watches {
+			if w.LastCheck.IsZero() || now.Sub(w.LastCheck)+dueSlack >= w.IntervalIn(policy, today) {
+				dueWatches = append(dueWatches, w)
+				if first || w.LastCheck.Before(oldest) { // hali tekshirilmagan (nol vaqt) birinchi turadi
+					oldest, first = w.LastCheck, false
+				}
+			}
+		}
+		if len(dueWatches) > 0 {
+			g.watches, g.lastCheck = dueWatches, oldest
 			out = append(out, g)
 		}
 	}

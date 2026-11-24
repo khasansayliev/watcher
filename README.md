@@ -13,6 +13,7 @@ bo'yicha kuzatuv yaratadi. Bo'sh joy chiqqanda Telegram'ga xabar keladi. Sotib o
   - Kuzatuv yaratish rejimi: **faqat ruxsat berilganlar** (standart), **hamma** yoki **hech kim**. Yangi foydalanuvchi ruxsatsiz boshlaydi; admin har biriga ruxsat beradi yoki oladi. **Ruxsati yo'q foydalanuvchining mavjud kuzatuvlari ham tekshirilmaydi** va xabar yubormaydi (ruxsat qaytsa davom etadi). «Hech kim» rejimida adminlardan tashqari hamma kuzatuvlar to'xtaydi. Adminlar har doim ruxsatli.
   - Foydalanuvchini o'chirish/yoqish: o'chirilganning sessiyalari tugaydi, kira olmaydi, kuzatuvlari tekshirilmaydi (qayta yoqilsa davom etadi). O'zini o'chirib bo'lmaydi.
   - Kuzatuvni to'xtatish/yoqish (hamma yoki bitta foydalanuvchiniki): admin to'xtatganini foydalanuvchi o'zi yoqa olmaydi.
+  - Har bir kuzatuv uchun **alohida tekshiruv oralig'i** (10 soniyadan 7 kungacha): `/admin/watches` dagi «Oraliq» formasi. Belgilanmasa umumiy jadval ishlaydi; «Jadvalga» tugmasi qaytaradi. Bir yo'nalishda bir nechta kuzatuv bo'lsa, saytga bitta so'rov ketadi, lekin har bir kuzatuv faqat o'z oralig'i kelganda baholanadi. Admin sahifasidagi yuklama jadvalida alohida oraliqlar ham hisobga olinadi.
 - **Telegram bildirishnomalari**: akkaunt va chat bir xil, alohida "ulash" bosqichi yo'q.
   Kod bir martalik va 10 daqiqa amal qiladi, faqat uni ochgan brauzerga bog'langan. Chat ID'ni qo'lda kiritish yo'q, shuning uchun birovning chatiga xabar yuborib bo'lmaydi.
 - Har bir foydalanuvchi **faqat o'z kuzatuvlarini** ko'radi va boshqaradi. Egalik usecase qatlamida tekshiriladi.

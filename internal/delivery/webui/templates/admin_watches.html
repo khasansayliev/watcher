@@ -3,10 +3,10 @@
 <section class="card">
   <h2>Kuzatuvlar ({{.Total}}){{if .OwnerName}} · {{.OwnerName}}{{end}}</h2>
   {{if .OwnerName}}<p><a href="/admin/watches"><button class="ghost" type="button">← Hamma kuzatuvlar</button></a></p>{{end}}
-  <p class="hint">«To'xtat» administrator nomidan to'xtatadi: foydalanuvchi uni o'zi qayta yoqa olmaydi va tekshiruv o'tkazilmaydi.</p>
+  <p class="hint">«Oraliq» — shu kuzatuvning tekshiruv vaqti (10 soniyadan 7 kungacha); belgilanmasa umumiy jadval ishlaydi. «To'xtat» administrator nomidan to'xtatadi: foydalanuvchi uni o'zi qayta yoqa olmaydi va tekshiruv o'tkazilmaydi.</p>
   {{if .Watches}}
   <table>
-    <thead><tr><th>Egasi</th><th>Yo'nalish</th><th>Sana</th><th>Filtr</th><th>Holat</th><th>Tekshiruv</th><th></th></tr></thead>
+    <thead><tr><th>Egasi</th><th>Yo'nalish</th><th>Sana</th><th>Filtr</th><th>Holat</th><th>Tekshiruv</th><th>Oraliq</th><th></th></tr></thead>
     <tbody>
     {{$back := .Back}}
     {{range .Watches}}
@@ -17,6 +17,20 @@
         <td>{{.Filter}}</td>
         <td><span class="badge {{.StateClass}}">{{.State}}</span>{{if .Matches}}<br><small>{{.Matches}} poyezd mos</small>{{end}}</td>
         <td><small>oxirgi: {{.LastCheck}}{{if .LastStatus}}<br>{{.LastStatus}}{{end}}</small></td>
+        <td>
+          <b>{{.Interval}}</b>{{if .IntervalCustom}} <span class="badge ok">admin</span>{{else}}<br><small>jadval bo'yicha</small>{{end}}
+          <form method="post" action="/admin/watches/{{.ID}}/interval" class="row" style="margin-top:6px">
+            <input type="hidden" name="back" value="{{$back}}">
+            <input type="number" name="v" min="1" value="{{.EveryValue}}" placeholder="son" style="width:70px">
+            <select name="u">
+              <option value="s"{{if eq .EveryUnit "s"}} selected{{end}}>soniya</option>
+              <option value="m"{{if eq .EveryUnit "m"}} selected{{end}}>daqiqa</option>
+              <option value="h"{{if eq .EveryUnit "h"}} selected{{end}}>soat</option>
+            </select>
+            <button class="ghost">Belgila</button>
+            {{if .IntervalCustom}}<button class="ghost" name="reset" value="1">Jadvalga</button>{{end}}
+          </form>
+        </td>
         <td class="actions">
           <form method="post" action="/admin/watches/{{.ID}}/disabled"><input type="hidden" name="back" value="{{$back}}">
             {{if .AdminDisabled}}<button class="ghost" name="v" value="0">Yoq</button>{{else}}<button class="ghost danger" name="v" value="1">To'xtat</button>{{end}}</form>

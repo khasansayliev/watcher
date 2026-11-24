@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"time"
 
 	"github.com/khasansayliev/watcher/internal/domain"
 )
@@ -154,6 +155,19 @@ func (s *AdminService) SetWatchDisabled(ctx context.Context, actor domain.User, 
 			w.LastStatus = "Administrator tomonidan to'xtatilgan"
 		}
 	})
+	return err
+}
+
+// SetWatchInterval shu kuzatuv uchun alohida tekshiruv oralig'ini belgilaydi. every == 0 — umumiy jadvalga qaytarish.
+// Oraliq 10 soniyadan 7 kungacha bo'lishi mumkin. Keyingi tekshiruv siklidan kuchga kiradi.
+func (s *AdminService) SetWatchInterval(ctx context.Context, actor domain.User, watchID int64, every time.Duration) error {
+	if err := s.require(actor); err != nil {
+		return err
+	}
+	if err := domain.ValidateCheckEvery(every); err != nil {
+		return err
+	}
+	_, err := s.watches.Update(ctx, watchID, func(w *domain.Watch) { w.CheckEvery = every })
 	return err
 }
 

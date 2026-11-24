@@ -17,7 +17,9 @@ type Watch struct {
 	Active bool
 	// AdminDisabled — admin to'xtatgan; foydalanuvchi uni o'zi qayta yoqa olmaydi.
 	AdminDisabled bool
-	CreatedAt     time.Time
+	// CheckEvery — admin shu kuzatuv uchun belgilagan tekshiruv oralig'i; 0 = umumiy jadval bo'yicha.
+	CheckEvery time.Duration
+	CreatedAt  time.Time
 
 	LastCheck    time.Time
 	LastStatus   string
@@ -58,6 +60,27 @@ func NewWatch(owner User, p NewWatchParams, today string, now time.Time) (Watch,
 
 // Runnable — kuzatuv tekshirilishi kerakmi (foydalanuvchi ham, admin ham to'xtatmagan).
 func (w Watch) Runnable() bool { return w.Active && !w.AdminDisabled }
+
+// IntervalIn kuzatuv qanchada bir tekshirilishini aytadi: admin belgilagan oraliq, bo'lmasa jadvaldagisi.
+func (w Watch) IntervalIn(p PollingPolicy, today string) time.Duration {
+	if w.CheckEvery > 0 {
+		return w.CheckEvery
+	}
+	return p.IntervalFor(w.Route.Date, today)
+}
+
+// ValidateCheckEvery admin belgilaydigan oraliqni tekshiradi (0 = jadvalga qaytarish).
+func ValidateCheckEvery(d time.Duration) error {
+	switch {
+	case d == 0:
+		return nil
+	case d < MinCheckInterval:
+		return NewValidationError(fmt.Sprintf("Oraliq kamida %s bo'lishi kerak", textfmt.Interval(MinCheckInterval)))
+	case d > MaxCheckInterval:
+		return NewValidationError("Oraliq ko'pi bilan 7 kun bo'lishi mumkin")
+	}
+	return nil
+}
 
 func (w Watch) OwnedBy(userID int64) bool { return w.UserID == userID }
 

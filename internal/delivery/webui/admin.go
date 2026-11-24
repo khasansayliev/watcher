@@ -80,8 +80,12 @@ func (s *Server) adminPolling(w http.ResponseWriter, r *http.Request) {
 	var total float64
 	for _, t := range stats {
 		total += t.RequestsPerHour
+		label, interval := t.Rule.Label(), "har "+textfmt.Interval(t.Rule.Interval)
+		if t.Custom {
+			label, interval = "Admin belgilagan oraliqlar", "alohida"
+		}
 		vm.Tiers = append(vm.Tiers, tierVM{
-			Label: t.Rule.Label(), Interval: "har " + textfmt.Interval(t.Rule.Interval),
+			Label: label, Interval: interval,
 			Routes: t.Routes, Watches: t.Watches, RequestsPerHour: perHour(t.RequestsPerHour),
 		})
 	}

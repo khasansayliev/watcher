@@ -57,6 +57,7 @@ type AdminUseCase interface {
 	SetUserDisabled(ctx context.Context, actor domain.User, userID int64, disabled bool) error
 	Watches(ctx context.Context, actor domain.User, userID int64, page int) (usecase.AdminWatchPage, error)
 	SetWatchDisabled(ctx context.Context, actor domain.User, watchID int64, disabled bool) error
+	SetWatchInterval(ctx context.Context, actor domain.User, watchID int64, every time.Duration) error
 	SetCreationMode(ctx context.Context, actor domain.User, m domain.CreationMode) error
 }
 
@@ -126,6 +127,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /admin/settings/creation", s.auth(s.adminCreationMode))
 	mux.Handle("GET /admin/watches", s.auth(s.adminWatches))
 	mux.Handle("POST /admin/watches/{id}/disabled", s.auth(s.adminWatchDisabled))
+	mux.Handle("POST /admin/watches/{id}/interval", s.auth(s.adminWatchInterval))
 	mux.Handle("GET /admin/polling", s.auth(s.adminPolling))
 	mux.Handle("POST /admin/polling", s.auth(s.adminPollingSave))
 

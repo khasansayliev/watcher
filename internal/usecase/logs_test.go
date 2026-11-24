@@ -18,8 +18,8 @@ func TestMonitorLogsEverySuccessfulRequest(t *testing.T) {
 	other := mustCreate(t, e, e.user("B"), "2900000", "2900700", "2026-12-05") // xuddi shu yo'nalish
 
 	e.monitor.RunCycle(ctx, w.ID) // qo'lda
-	e.clock.add(15 * time.Second)
-	e.monitor.RunCycle(ctx, 0) // avtomatik
+	e.clock.add(2 * time.Hour)    // oraliqdan (1 soat) o'tdi: ikkala kuzatuv ham navbatda
+	e.monitor.RunCycle(ctx, 0)    // avtomatik
 
 	logs := e.logs.forWatch(w.ID)
 	if len(logs) != 2 {
