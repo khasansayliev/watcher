@@ -279,3 +279,17 @@ func durationLabel(d time.Duration) string {
 	}
 	return strconv.FormatFloat(d.Seconds(), 'f', 1, 64) + " s"
 }
+
+type editVM struct {
+	layoutVM
+	Stations []domain.Station
+	Today    string
+	ID       int64
+	Route    domain.Route
+	Window   domain.TimeWindow
+	MaxPrice string
+	MinSeats int
+	CarType  string
+	Blocked  string // bo'sh emas bo'lsa — tahrirlash mumkin emas (ruxsat yo'q), sababi shu
+	Note     string
+}

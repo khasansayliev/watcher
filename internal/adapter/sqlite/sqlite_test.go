@@ -382,3 +382,29 @@ func TestAdminQueries(t *testing.T) {
 		t.Fatalf("rejim saqlanmadi: %+v", s)
 	}
 }
+
+func TestWatchUpdatePersistsEditableFields(t *testing.T) {
+	ctx := context.Background()
+	db := open(t)
+	if err := Migrate(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+	u, _ := NewUsers(db).UpsertByTelegram(ctx, domain.TelegramProfile{ID: "555"}, time.Now())
+	repo := NewWatches(db)
+	w, _ := repo.Create(ctx, domain.Watch{UserID: u.ID, Route: domain.Route{From: "1", To: "2", Date: "2026-12-05"}, Active: true, CreatedAt: time.Now()})
+
+	_, err := repo.Update(ctx, w.ID, func(x *domain.Watch) {
+		_ = x.ApplyEdit(domain.NewWatchParams{
+			Route:  domain.Route{From: "3", To: "4", Date: "2026-12-09"},
+			Filter: domain.Filter{MaxPrice: 250000, MinSeats: 3, CarType: "Купе", Window: domain.TimeWindow{From: "07:00", To: "12:00"}},
+		}, "2026-11-24")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := repo.Get(ctx, w.ID)
+	if got.Route != (domain.Route{From: "3", To: "4", Date: "2026-12-09"}) ||
+		got.Filter != (domain.Filter{MaxPrice: 250000, MinSeats: 3, CarType: "Купе", Window: domain.TimeWindow{From: "07:00", To: "12:00"}}) {
+		t.Fatalf("tahrir saqlanmadi: %+v", got)
+	}
+}

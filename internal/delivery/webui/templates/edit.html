@@ -1,0 +1,38 @@
+{{template "head" .}}
+<section class="card">
+  <h2>Kuzatuvni tahrirlash</h2>
+  {{if .Blocked}}<div class="warn">{{.Blocked}}<br><small>Ruxsat bo'lmaguncha kuzatuvni o'zgartirib bo'lmaydi.</small></div>{{end}}
+  {{if .Note}}<div class="warn">{{.Note}}</div>{{end}}
+  <form method="post" action="/watches/{{.ID}}/edit" class="grid">
+    <label>Qayerdan
+      <select name="from" required>{{$f := .Route.From}}{{range .Stations}}<option value="{{.Code}}"{{if eq .Code $f}} selected{{end}}>{{.Name}}</option>{{end}}</select>
+    </label>
+    <label>Qayerga
+      <select name="to" required>{{$t := .Route.To}}{{range .Stations}}<option value="{{.Code}}"{{if eq .Code $t}} selected{{end}}>{{.Name}}</option>{{end}}</select>
+    </label>
+    <label>Sana
+      <input type="date" name="date" min="{{.Today}}" value="{{.Route.Date}}" required>
+    </label>
+    <label>Jo'nash vaqti: dan
+      <input type="time" name="time_from" value="{{.Window.From}}">
+    </label>
+    <label>Jo'nash vaqti: gacha
+      <input type="time" name="time_to" value="{{.Window.To}}">
+    </label>
+    <label>Maks. narx, so'm
+      <input type="number" name="max_price" min="0" step="1000" value="{{.MaxPrice}}" placeholder="ixtiyoriy">
+    </label>
+    <label>Kamida joy
+      <input type="number" name="min_seats" min="1" max="50" value="{{if .MinSeats}}{{.MinSeats}}{{else}}1{{end}}">
+    </label>
+    <label class="wide">Turi / klass filtri
+      <input name="car_type" maxlength="64" value="{{.CarType}}" placeholder="masalan: Afrosiyob, Купе, 2E (ixtiyoriy)">
+    </label>
+    <p class="hint wide">O'zgartirgach tekshiruv holati boshidan boshlanadi: kuzatuv darhol tekshiriladi va birinchi topilma haqida yangidan xabar beriladi. Oldingi tekshiruv loglari saqlanib qoladi.</p>
+    <span class="row">
+      <button type="submit"{{if .Blocked}} disabled{{end}}>Saqlash</button>
+      <a href="/"><button class="ghost" type="button">Bekor qilish</button></a>
+    </span>
+  </form>
+</section>
+{{template "foot" .}}

@@ -34,6 +34,8 @@ type WatchUseCase interface {
 	Toggle(ctx context.Context, userID, id int64) (domain.Watch, error)
 	RequestCheck(ctx context.Context, userID, id int64) error
 	Logs(ctx context.Context, userID, id int64, page int) (usecase.LogPage, error)
+	Get(ctx context.Context, userID, id int64) (domain.Watch, error)
+	Edit(ctx context.Context, userID, id int64, in usecase.CreateWatchInput) (domain.Watch, error)
 	CanCreate(ctx context.Context, userID int64) error
 }
 
@@ -113,6 +115,8 @@ func (s *Server) Handler() http.Handler {
 	// faqat kirganlar uchun
 	mux.Handle("GET /{$}", s.auth(s.dashboard))
 	mux.Handle("POST /watches", s.auth(s.createWatch))
+	mux.Handle("GET /watches/{id}/edit", s.auth(s.editWatchPage))
+	mux.Handle("POST /watches/{id}/edit", s.auth(s.editWatch))
 	mux.Handle("POST /watches/{id}/delete", s.auth(s.deleteWatch))
 	mux.Handle("POST /watches/{id}/toggle", s.auth(s.toggleWatch))
 	mux.Handle("POST /watches/{id}/check", s.auth(s.checkWatch))

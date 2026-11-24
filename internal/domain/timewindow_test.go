@@ -133,3 +133,28 @@ func TestWatchIntervalAndValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestApplyEdit(t *testing.T) {
+	w := Watch{
+		Route: Route{From: "1", To: "2", Date: "2026-12-05"}, Active: true, AdminDisabled: true, CheckEvery: time.Minute,
+		LastCheck: time.Now(), LastSig: "x", LastMatches: 3, LastNotified: time.Now(),
+	}
+	in := NewWatchParams{Route: Route{From: "1", To: "3", Date: "2026-12-08"}, Filter: Filter{CarType: " Купе "}}
+	if err := w.ApplyEdit(in, "2026-11-24"); err != nil {
+		t.Fatal(err)
+	}
+	if w.Route.To != "3" || w.Filter.CarType != "Купе" || !w.LastCheck.IsZero() || w.LastSig != "" || w.LastMatches != 0 {
+		t.Fatalf("%+v", w)
+	}
+	if !w.AdminDisabled || w.CheckEvery != time.Minute || w.LastNotified.IsZero() {
+		t.Fatalf("admin belgilari va oxirgi xabar vaqti saqlanishi kerak: %+v", w)
+	}
+	before := w
+	var ve *ValidationError
+	if err := w.ApplyEdit(NewWatchParams{Route: Route{From: "1", To: "1", Date: "2026-12-08"}}, "2026-11-24"); !errors.As(err, &ve) {
+		t.Fatal("noto'g'ri tahrir rad etilishi kerak")
+	}
+	if w != before {
+		t.Fatal("rad etilgan tahrir kuzatuvni o'zgartirmasligi kerak")
+	}
+}

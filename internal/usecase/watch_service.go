@@ -68,6 +68,46 @@ func (s *WatchService) CanCreate(ctx context.Context, userID int64) error {
 	return s.gate.CanCreate(ctx, owner)
 }
 
+// Get egasining kuzatuvini qaytaradi (tahrirlash formasi uchun).
+func (s *WatchService) Get(ctx context.Context, userID, id int64) (domain.Watch, error) {
+	return s.owned(ctx, userID, id)
+}
+
+// Edit egasining kuzatuvini o'zgartiradi: yo'nalish, sana va shartlar. Yangi kuzatuv yaratish bilan bir xil
+// qoidalar amal qiladi (ruxsat va tekshiruvlar), shuning uchun tahrirlash ruxsatdan o'tish yo'li bo'lmaydi.
+// Tekshiruv holati boshidan boshlanadi va kuzatuv darhol tekshiriladi.
+func (s *WatchService) Edit(ctx context.Context, userID, id int64, in CreateWatchInput) (domain.Watch, error) {
+	w, err := s.owned(ctx, userID, id)
+	if err != nil {
+		return domain.Watch{}, err
+	}
+	owner, err := s.users.Get(ctx, userID)
+	if err != nil {
+		return domain.Watch{}, err
+	}
+	if err := s.gate.CanCreate(ctx, owner); err != nil {
+		return domain.Watch{}, err
+	}
+	today := s.clock.Today()
+	candidate := w
+	if err := candidate.ApplyEdit(in, today); err != nil {
+		return domain.Watch{}, err
+	}
+	if candidate.Active && !w.Active { // sanasi o'tib to'xtagan kuzatuv qayta yoqiladi — limitni tekshiramiz
+		if err := s.checkLimit(ctx, userID); err != nil {
+			return domain.Watch{}, err
+		}
+	}
+	saved, err := s.repo.Update(ctx, id, func(x *domain.Watch) { _ = x.ApplyEdit(in, today) })
+	if err != nil {
+		return domain.Watch{}, err
+	}
+	if saved.Runnable() {
+		s.checker.RequestCheck(id)
+	}
+	return saved, nil
+}
+
 func (s *WatchService) List(ctx context.Context, userID int64) ([]domain.Watch, error) {
 	return s.repo.ListByUser(ctx, userID)
 }

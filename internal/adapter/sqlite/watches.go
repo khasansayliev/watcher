@@ -86,9 +86,13 @@ func (r *Watches) Update(ctx context.Context, id int64, fn func(*domain.Watch)) 
 	_, err = tx.ExecContext(ctx, `
 		UPDATE watches
 		   SET active = ?2, last_check = ?3, last_status = ?4, last_matches = ?5,
-		       last_sig = ?6, last_notified = ?7, admin_disabled = ?8, check_every_seconds = ?9
+		       last_sig = ?6, last_notified = ?7, admin_disabled = ?8, check_every_seconds = ?9,
+		       from_code = ?10, to_code = ?11, travel_date = ?12,
+		       max_price = ?13, min_seats = ?14, car_type = ?15, time_from = ?16, time_to = ?17
 		 WHERE id = ?1`,
-		id, boolInt(w.Active), ms(w.LastCheck), w.LastStatus, w.LastMatches, w.LastSig, ms(w.LastNotified), boolInt(w.AdminDisabled), int64(w.CheckEvery/time.Second))
+		id, boolInt(w.Active), ms(w.LastCheck), w.LastStatus, w.LastMatches, w.LastSig, ms(w.LastNotified), boolInt(w.AdminDisabled), int64(w.CheckEvery/time.Second),
+		w.Route.From, w.Route.To, w.Route.Date,
+		w.Filter.MaxPrice, w.Filter.MinSeats, w.Filter.CarType, w.Filter.Window.From, w.Filter.Window.To)
 	if err != nil {
 		return domain.Watch{}, err
 	}

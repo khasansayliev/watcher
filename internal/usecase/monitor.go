@@ -149,7 +149,11 @@ func (m *Monitor) RunCycle(ctx context.Context, onlyID int64) {
 			d := m.fail(err)
 			m.log.Warn("qidiruv xatosi", "route", g.route.Key(), "err", err, "pause", d.Round(time.Second))
 			for _, w := range g.watches {
-				_, _ = m.repo.Update(ctx, w.ID, func(x *domain.Watch) { x.RecordFailure(now, err) })
+				_, _ = m.repo.Update(ctx, w.ID, func(x *domain.Watch) {
+					if sameTarget(*x, w) {
+						x.RecordFailure(now, err)
+					}
+				})
 				m.record(ctx, domain.CheckLog{
 					WatchID: w.ID, ReqTime: sent, Duration: now.Sub(sent), Manual: manual,
 					Error: textfmt.Truncate(err.Error(), 300),
@@ -160,6 +164,9 @@ func (m *Monitor) RunCycle(ctx context.Context, onlyID int64) {
 		m.succeed()
 		for _, w := range g.watches {
 			res := m.evaluate(ctx, w, trains, now, chats)
+			if res.stale {
+				continue
+			}
 			l := domain.CheckLog{
 				WatchID: w.ID, ReqTime: sent, Duration: now.Sub(sent), Manual: manual, OK: true,
 				TrainCount: len(trains), MatchCount: len(res.matches), Notified: res.notified && res.notifyErr == nil,
@@ -274,6 +281,9 @@ func (m *Monitor) due(ctx context.Context, groups []routeGroup) []routeGroup {
 	return out
 }
 
+// sameTarget kuzatuv so'rov yuborilgandan beri yo'nalish yoki shartlari o'zgarmaganini tekshiradi.
+func sameTarget(a, b domain.Watch) bool { return a.Route == b.Route && a.Filter == b.Filter }
+
 // record logni yozadi; log yozilmasa ham tekshiruv davom etadi.
 func (m *Monitor) record(ctx context.Context, l domain.CheckLog) {
 	if err := m.logs.Add(ctx, l); err != nil {
@@ -286,12 +296,17 @@ type evalResult struct {
 	matches   []domain.Match
 	notified  bool // xabar yuborishga urinildi
 	notifyErr error
+	stale     bool // so'rov paytida kuzatuv tahrirlangan: natija eskirgan, yozilmaydi va xabar yuborilmaydi
 }
 
 func (m *Monitor) evaluate(ctx context.Context, w domain.Watch, trains []domain.Train, now time.Time, chats map[int64]string) evalResult {
 	matches, notify, sig := w.Evaluate(trains)
 	var nerr error
 	if notify {
+		// Xabar yuborishdan oldin kuzatuv hali o'zgarmaganini tekshiramiz (so'rov paytida tahrirlanishi mumkin).
+		if cur, err := m.repo.Get(ctx, w.ID); err != nil || !sameTarget(cur, w) {
+			return evalResult{stale: true}
+		}
 		chat, ok := chats[w.UserID]
 		if !ok {
 			if u, err := m.users.Get(ctx, w.UserID); err == nil {
@@ -308,9 +323,16 @@ func (m *Monitor) evaluate(ctx context.Context, w domain.Watch, trains []domain.
 			m.log.Warn("xabar yuborilmadi", "watch", w.ID, "user", w.UserID, "err", nerr)
 		}
 	}
-	_, _ = m.repo.Update(ctx, w.ID, func(x *domain.Watch) {
-		x.RecordResult(now, len(trains), matches, sig, notify, nerr)
+	applied := false
+	_, err := m.repo.Update(ctx, w.ID, func(x *domain.Watch) {
+		if sameTarget(*x, w) { // so'rov yuborilgandan keyin tahrirlangan bo'lsa, eski natija yozilmaydi
+			x.RecordResult(now, len(trains), matches, sig, notify, nerr)
+			applied = true
+		}
 	})
+	if err == nil && !applied {
+		return evalResult{stale: true}
+	}
 	return evalResult{matches: matches, notified: notify, notifyErr: nerr}
 }
 

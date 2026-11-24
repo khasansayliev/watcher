@@ -44,8 +44,8 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 	s.render(w, "index.html", vm)
 }
 
-func (s *Server) createWatch(w http.ResponseWriter, r *http.Request) {
-	u := userFrom(r.Context())
+// parseWatchForm yaratish va tahrirlash formalarini bir xil o'qiydi. Xato bo'lsa, foydalanuvchiga matn qaytaradi.
+func parseWatchForm(r *http.Request) (usecase.CreateWatchInput, string) {
 	in := usecase.CreateWatchInput{
 		Route: domain.Route{
 			From: strings.TrimSpace(r.FormValue("from")),
@@ -57,27 +57,95 @@ func (s *Server) createWatch(w http.ResponseWriter, r *http.Request) {
 			Window:  domain.TimeWindow{From: r.FormValue("time_from"), To: r.FormValue("time_to")},
 		},
 	}
-	if v := r.FormValue("max_price"); v != "" {
+	if v := strings.TrimSpace(r.FormValue("max_price")); v != "" {
 		p, err := strconv.ParseFloat(v, 64)
 		if err != nil {
-			s.back(w, r, "/", "Maks. narx noto'g'ri", "err")
-			return
+			return in, "Maks. narx noto'g'ri"
 		}
 		in.Filter.MaxPrice = p
 	}
-	if v := r.FormValue("min_seats"); v != "" {
+	if v := strings.TrimSpace(r.FormValue("min_seats")); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil {
-			s.back(w, r, "/", "Joylar soni noto'g'ri", "err")
-			return
+			return in, "Joylar soni noto'g'ri"
 		}
 		in.Filter.MinSeats = n
+	}
+	return in, ""
+}
+
+func (s *Server) createWatch(w http.ResponseWriter, r *http.Request) {
+	u := userFrom(r.Context())
+	in, msg := parseWatchForm(r)
+	if msg != "" {
+		s.back(w, r, "/", msg, "err")
+		return
 	}
 	if _, err := s.d.Watches.Create(r.Context(), u.ID, in); err != nil {
 		s.fail(w, r, "/", err)
 		return
 	}
 	s.back(w, r, "/", "Kuzatuv yaratildi, birinchi tekshiruv boshlandi", "ok")
+}
+
+// editWatchPage kuzatuvni tahrirlash formasi (joriy qiymatlar bilan).
+func (s *Server) editWatchPage(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	u := userFrom(r.Context())
+	wt, err := s.d.Watches.Get(r.Context(), u.ID, id)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		s.fail(w, r, "/", err)
+		return
+	}
+	vm := editVM{
+		layoutVM: s.layout("Kuzatuvni tahrirlash", r, u), Stations: s.d.Stations.All(), Today: s.d.Clock.Today(),
+		ID: wt.ID, Route: wt.Route, Window: wt.Filter.Window, CarType: wt.Filter.CarType, MinSeats: wt.Filter.MinSeats,
+	}
+	if wt.Filter.MaxPrice > 0 {
+		vm.MaxPrice = strconv.FormatFloat(wt.Filter.MaxPrice, 'f', -1, 64)
+	}
+	if wt.AdminDisabled {
+		vm.Note = "Bu kuzatuv administrator tomonidan to'xtatilgan: tahrirlasangiz ham administrator yoqmaguncha tekshirilmaydi."
+	}
+	if err := s.d.Watches.CanCreate(r.Context(), u.ID); err != nil {
+		var ve *domain.ValidationError
+		if errors.As(err, &ve) {
+			vm.Blocked = ve.Msg
+		}
+	}
+	s.render(w, "edit.html", vm)
+}
+
+func (s *Server) editWatch(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	u := userFrom(r.Context())
+	editPath := "/watches/" + strconv.FormatInt(id, 10) + "/edit"
+	in, msg := parseWatchForm(r)
+	if msg != "" {
+		s.back(w, r, editPath, msg, "err")
+		return
+	}
+	if _, err := s.d.Watches.Edit(r.Context(), u.ID, id, in); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		s.fail(w, r, editPath, err)
+		return
+	}
+	s.back(w, r, "/", "Kuzatuv o'zgartirildi, tekshiruv darhol boshlanadi", "ok")
 }
 
 func (s *Server) deleteWatch(w http.ResponseWriter, r *http.Request) {

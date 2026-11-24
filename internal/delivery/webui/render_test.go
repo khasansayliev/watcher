@@ -245,3 +245,50 @@ func grepLines(s string, subs ...string) string {
 	}
 	return strings.Join(out, "\n")
 }
+
+func TestEditPageRenders(t *testing.T) {
+	html := render(t, "edit.html", editVM{
+		layoutVM: layoutVM{User: &userVM{Name: "Ali"}}, Stations: stations, Today: "2026-12-01", ID: 7,
+		Route: domain.Route{From: "2900000", To: "2900700", Date: "2026-12-05"}, Window: domain.TimeWindow{From: "08:00", To: "18:30"},
+		MaxPrice: "250000", MinSeats: 3, CarType: "Afrosiyob", Note: "admin to'xtatgan",
+	})
+	for _, want := range []string{`action="/watches/7/edit"`, `<option value="2900000" selected>`, `<option value="2900700" selected>`, `value="2026-12-05"`,
+		`name="time_from" value="08:00"`, `name="time_to" value="18:30"`, `name="max_price" min="0" step="1000" value="250000"`,
+		`name="min_seats" min="1" max="50" value="3"`, `value="Afrosiyob"`, "admin to&#39;xtatgan", "Saqlash"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("tahrirlash sahifasida %q yo'q", want)
+		}
+	}
+	if strings.Contains(html, "disabled>Saqlash") {
+		t.Fatal("ruxsat bo'lsa, saqlash tugmasi ochiq bo'lishi kerak")
+	}
+	blocked := render(t, "edit.html", editVM{layoutVM: layoutVM{User: &userVM{Name: "Ali"}}, Stations: stations, ID: 7, Blocked: "ruxsat kerak"})
+	if !strings.Contains(blocked, `disabled>Saqlash`) || !strings.Contains(blocked, "ruxsat kerak") {
+		t.Fatal("ruxsatsizga saqlash o'chirilgan va sabab ko'rsatilgan bo'lishi kerak")
+	}
+
+	dash := render(t, "index.html", dashboardVM{layoutVM: layoutVM{User: &userVM{Name: "Ali"}}, Stations: stations, Today: "2026-12-01",
+		Watches: []watchVM{{ID: 3, RouteLabel: "A → B", Active: true}}})
+	if !strings.Contains(dash, `href="/watches/3/edit"`) {
+		t.Fatal("dashboardda 'Tahrirlash' havolasi bo'lishi kerak")
+	}
+}
+
+func TestParseWatchForm(t *testing.T) {
+	mk := func(v url.Values) *http.Request {
+		r := httptest.NewRequest("POST", "/x", strings.NewReader(v.Encode()))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		return r
+	}
+	in, msg := parseWatchForm(mk(url.Values{"from": {" 1 "}, "to": {"2"}, "date": {"2026-12-05"}, "max_price": {"250000"}, "min_seats": {"2"},
+		"car_type": {"Купе"}, "time_from": {"08:00"}, "time_to": {""}}))
+	if msg != "" || in.Route.From != "1" || in.Filter.MaxPrice != 250000 || in.Filter.MinSeats != 2 || in.Filter.Window.From != "08:00" || in.Filter.Window.To != "" {
+		t.Fatalf("%+v %q", in, msg)
+	}
+	if _, msg := parseWatchForm(mk(url.Values{"max_price": {"abc"}})); msg == "" {
+		t.Fatal("noto'g'ri narx rad etilishi kerak")
+	}
+	if _, msg := parseWatchForm(mk(url.Values{"min_seats": {"x"}})); msg == "" {
+		t.Fatal("noto'g'ri joy soni rad etilishi kerak")
+	}
+}

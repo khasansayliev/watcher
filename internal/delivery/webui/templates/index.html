@@ -49,6 +49,7 @@
         <td class="actions">
           <a href="{{.SearchURL}}"><button class="ghost" type="button">Ko'rish</button></a>
           <a href="/watches/{{.ID}}/logs"><button class="ghost" type="button">Loglar</button></a>
+          <a href="/watches/{{.ID}}/edit"><button class="ghost" type="button">Tahrirlash</button></a>
           {{if not .AdminDisabled}}
           <form method="post" action="/watches/{{.ID}}/check"><button class="ghost">Tekshir</button></form>
           <form method="post" action="/watches/{{.ID}}/toggle"><button class="ghost">{{if .Active}}To'xtat{{else}}Yoq{{end}}</button></form>

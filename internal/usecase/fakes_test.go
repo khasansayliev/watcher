@@ -391,13 +391,20 @@ type fakeSearcher struct {
 	calls  int
 	trains []domain.Train
 	err    error
+	// onSearch — so'rov paytida chaqiriladi (poyga holatlarini sinash uchun).
+	onSearch func()
 }
 
 func (f *fakeSearcher) Search(context.Context, domain.Route) ([]domain.Train, error) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.calls++
-	return f.trains, f.err
+	hook := f.onSearch
+	trains, err := f.trains, f.err
+	f.mu.Unlock()
+	if hook != nil {
+		hook() // so'rov yuborilgan paytda sodir bo'ladigan voqea (masalan, tahrirlash)
+	}
+	return trains, err
 }
 
 type sentMsg struct{ chat, text string }
