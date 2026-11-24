@@ -1,5 +1,6 @@
 // Package telegrambot — Telegram'dan kiruvchi buyruqlar (delivery qatlami).
-// Bot "/start <kod>" ni oladi va usecase'ga uzatadi; o'zi biznes mantiq saqlamaydi.
+// Hozircha faqat /start: foydalanuvchiga saytga qanday kirishni aytadi.
+// Botga /start yozish, shuningdek, bot foydalanuvchiga xabar yubora olishini ta'minlaydi.
 package telegrambot
 
 import (
@@ -11,19 +12,18 @@ import (
 	"github.com/khasansayliev/watcher/internal/adapter/telegram"
 )
 
-type Linker interface {
-	LinkChat(ctx context.Context, code, chatID string) error
+type Greeter interface {
 	Greet(ctx context.Context, chatID string) error
 }
 
 type Bot struct {
-	client *telegram.Client
-	linker Linker
-	log    *slog.Logger
+	client  *telegram.Client
+	greeter Greeter
+	log     *slog.Logger
 }
 
-func New(c *telegram.Client, l Linker, log *slog.Logger) *Bot {
-	return &Bot{client: c, linker: l, log: log}
+func New(c *telegram.Client, g Greeter, log *slog.Logger) *Bot {
+	return &Bot{client: c, greeter: g, log: log}
 }
 
 // Run long polling sikli. Bot uchun webhook o'rnatilmagan bo'lishi kerak.
@@ -60,16 +60,11 @@ func (b *Bot) handle(ctx context.Context, u telegram.Update) {
 	if u.ChatID == "" {
 		return
 	}
-	cmd, arg, _ := strings.Cut(strings.TrimSpace(u.Text), " ")
+	cmd, _, _ := strings.Cut(strings.TrimSpace(u.Text), " ")
 	if cmd != "/start" {
 		return
 	}
-	var err error
-	if arg = strings.TrimSpace(arg); arg == "" {
-		err = b.linker.Greet(ctx, u.ChatID)
-	} else {
-		err = b.linker.LinkChat(ctx, arg, u.ChatID)
-	}
+	err := b.greeter.Greet(ctx, u.ChatID)
 	if err != nil {
 		b.log.Info("telegram /start", "chat", u.ChatID, "err", err)
 	}

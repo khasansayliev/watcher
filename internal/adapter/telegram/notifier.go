@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"html"
-	"net/url"
 	"strings"
 
 	"github.com/khasansayliev/watcher/internal/domain"
@@ -31,14 +30,6 @@ func (n *Notifier) Enabled() bool { return n.c.Enabled() }
 
 func (n *Notifier) SendText(ctx context.Context, chatID, text string) error {
 	return n.c.SendMessage(ctx, chatID, text, false)
-}
-
-func (n *Notifier) LinkURL(code string) (string, error) {
-	name, err := n.c.Username(context.Background())
-	if err != nil {
-		return "", err
-	}
-	return "https://t.me/" + name + "?start=" + url.QueryEscape(code), nil
 }
 
 func (n *Notifier) NotifyAvailability(ctx context.Context, chatID string, r domain.Route, ms []domain.Match) error {

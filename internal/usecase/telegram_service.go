@@ -3,71 +3,29 @@ package usecase
 import (
 	"context"
 	"errors"
-	"time"
-
-	"github.com/khasansayliev/watcher/internal/domain"
+	"strings"
 )
 
-const linkCodeTTL = 15 * time.Minute
+// ErrBotBlocked — bot foydalanuvchiga yoza olmaydi (botni bloklagan yoki yozish ruxsatini bermagan).
+var ErrBotBlocked = errors.New("bot foydalanuvchiga yoza olmaydi")
 
-// TelegramService — foydalanuvchi akkauntini Telegram chatiga bog'lash.
-//
-// Oqim: UI'da "Ulash" → bir martalik kod yaratiladi → t.me/<bot>?start=<kod> ochiladi →
-// foydalanuvchi Start bosadi → bot "/start <kod>" oladi → LinkChat chat ID'ni akkauntga bog'laydi.
-// Shunday qilib hech kim boshqa birovning chat ID'sini qo'lda kirita olmaydi.
+// TelegramService — botning foydalanuvchi bilan bevosita muloqoti.
+// Akkaunt Telegram orqali ochilgani uchun alohida "ulash" bosqichi yo'q:
+// bildirishnomalar foydalanuvchining o'z Telegram ID'siga (bot bilan shaxsiy chat) yuboriladi.
 type TelegramService struct {
 	users    UserRepository
-	codes    LinkCodeRepository
 	notifier Notifier
-	clock    Clock
+	siteURL  string
 }
 
-func NewTelegramService(users UserRepository, codes LinkCodeRepository, n Notifier, c Clock) *TelegramService {
-	return &TelegramService{users: users, codes: codes, notifier: n, clock: c}
+func NewTelegramService(users UserRepository, n Notifier, siteURL string) *TelegramService {
+	return &TelegramService{users: users, notifier: n, siteURL: siteURL}
 }
 
-// StartLink bir martalik kod yaratadi va botni ochuvchi havolani qaytaradi.
-func (s *TelegramService) StartLink(ctx context.Context, userID int64) (string, error) {
-	if !s.notifier.Enabled() {
-		return "", domain.NewValidationError("Telegram bot sozlanmagan (TELEGRAM_BOT_TOKEN)")
-	}
-	code, err := RandomToken(18) // 24 belgi; Telegram start parametri 64 belgigacha
-	if err != nil {
-		return "", err
-	}
-	if err := s.codes.Create(ctx, code, userID, s.clock.Now().Add(linkCodeTTL)); err != nil {
-		return "", err
-	}
-	return s.notifier.LinkURL(code)
-}
-
-// LinkChat botdan kelgan "/start <kod>" ni qayta ishlaydi.
-func (s *TelegramService) LinkChat(ctx context.Context, code, chatID string) error {
-	userID, err := s.codes.Consume(ctx, code, s.clock.Now())
-	if errors.Is(err, domain.ErrNotFound) {
-		_ = s.notifier.SendText(ctx, chatID, "Havola eskirgan yoki ishlatilgan. Saytdagi Sozlamalar sahifasidan qaytadan \"Telegram'ni ulash\" ni bosing.")
-		return err
-	}
-	if err != nil {
-		return err
-	}
-	if err := s.users.SetTelegramChat(ctx, userID, chatID); err != nil {
-		return err
-	}
-	u, err := s.users.Get(ctx, userID)
-	if err != nil {
-		return err
-	}
-	return s.notifier.SendText(ctx, chatID, "✅ Telegram "+u.Email+" akkauntiga ulandi. Bo'sh joy chiqsa shu yerga xabar keladi.")
-}
-
-// Greet — kodsiz /start yozganlarga yo'riqnoma.
+// Greet — botga /start yozganlarga yo'riqnoma.
 func (s *TelegramService) Greet(ctx context.Context, chatID string) error {
-	return s.notifier.SendText(ctx, chatID, "Salom! Bildirishnomalarni olish uchun saytga Google orqali kiring va Sozlamalar sahifasida \"Telegram'ni ulash\" tugmasini bosing.")
-}
-
-func (s *TelegramService) Unlink(ctx context.Context, userID int64) error {
-	return s.users.SetTelegramChat(ctx, userID, "")
+	return s.notifier.SendText(ctx, chatID, "Salom! Bu Watcher boti. "+s.siteURL+
+		" saytiga \"Telegram orqali kirish\" tugmasi bilan kiring va kuzatuv yarating — poyezdga bo'sh joy chiqsa shu yerga xabar keladi.")
 }
 
 func (s *TelegramService) SendTest(ctx context.Context, userID int64) error {
@@ -75,8 +33,18 @@ func (s *TelegramService) SendTest(ctx context.Context, userID int64) error {
 	if err != nil {
 		return err
 	}
-	if !u.HasTelegram() {
-		return domain.NewValidationError("Telegram ulanmagan")
+	err = s.notifier.SendText(ctx, u.ChatID(), "✅ Test xabar: Watcher ishlayapti.")
+	if err != nil && isForbidden(err) {
+		return ErrBotBlocked
 	}
-	return s.notifier.SendText(ctx, u.TelegramChatID, "✅ Test xabar: Watcher ishlayapti.")
+	return err
+}
+
+// isForbidden — Telegram "bot can't initiate conversation" / "bot was blocked by the user" xatolari.
+func isForbidden(err error) bool {
+	if errors.Is(err, ErrBotBlocked) {
+		return true
+	}
+	m := strings.ToLower(err.Error())
+	return strings.Contains(m, "forbidden") || strings.Contains(m, "blocked") || strings.Contains(m, "can't initiate")
 }

@@ -19,9 +19,6 @@ type Config struct {
 
 	DatabasePath string // SQLite fayli
 
-	GoogleClientID     string
-	GoogleClientSecret string
-
 	TelegramToken string
 
 	RailwayBaseURL string
@@ -32,37 +29,33 @@ type Config struct {
 	MaxSearchesPerCycle int
 	MaxWatchesPerUser   int
 	SessionTTL          time.Duration
-	AdminEmails         []string
+	AdminTelegramIDs    []int64
 
 	Warnings []string
 }
 
 func (c Config) SecureCookies() bool { return strings.HasPrefix(c.BaseURL, "https://") }
 
-func (c Config) GoogleRedirectURL() string { return c.BaseURL + "/auth/google/callback" }
-
 func Load() (Config, error) {
 	c := Config{
-		Listen:             env("LISTEN_ADDR", ":8080"),
-		BaseURL:            strings.TrimRight(env("BASE_URL", "http://localhost:8080"), "/"),
-		TimeZone:           env("TZ_NAME", "Asia/Tashkent"),
-		DataDir:            env("DATA_DIR", "./data"),
-		DatabasePath:       os.Getenv("DATABASE_PATH"),
-		GoogleClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
-		GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
-		TelegramToken:      os.Getenv("TELEGRAM_BOT_TOKEN"),
-		RailwayBaseURL:     strings.TrimRight(env("RAILWAY_BASE", "https://eticket.railway.uz"), "/"),
-		RailwayLang:        env("RAILWAY_LANG", "uz"),
-		RailwayCookie:      os.Getenv("RAILWAY_COOKIE"),
-		StationsFile:       os.Getenv("STATIONS_FILE"),
+		Listen:         env("LISTEN_ADDR", ":8080"),
+		BaseURL:        strings.TrimRight(env("BASE_URL", "http://localhost:8080"), "/"),
+		TimeZone:       env("TZ_NAME", "Asia/Tashkent"),
+		DataDir:        env("DATA_DIR", "./data"),
+		DatabasePath:   os.Getenv("DATABASE_PATH"),
+		TelegramToken:  os.Getenv("TELEGRAM_BOT_TOKEN"),
+		RailwayBaseURL: strings.TrimRight(env("RAILWAY_BASE", "https://eticket.railway.uz"), "/"),
+		RailwayLang:    env("RAILWAY_LANG", "uz"),
+		RailwayCookie:  os.Getenv("RAILWAY_COOKIE"),
+		StationsFile:   os.Getenv("STATIONS_FILE"),
 	}
 
 	var errs []error
 	if c.DatabasePath == "" {
 		c.DatabasePath = filepath.Join(c.DataDir, "watcher.db")
 	}
-	if c.GoogleClientID == "" || c.GoogleClientSecret == "" {
-		errs = append(errs, errors.New("GOOGLE_CLIENT_ID va GOOGLE_CLIENT_SECRET kerak"))
+	if c.TelegramToken == "" {
+		errs = append(errs, errors.New("TELEGRAM_BOT_TOKEN kerak — kirish ham, bildirishnomalar ham Telegram bot orqali"))
 	}
 
 	var err error
@@ -78,15 +71,21 @@ func Load() (Config, error) {
 	if c.MaxWatchesPerUser, err = integer("MAX_WATCHES_PER_USER", 10); err != nil {
 		errs = append(errs, err)
 	}
-	for _, e := range strings.Split(os.Getenv("ADMIN_EMAILS"), ",") {
-		if e = strings.TrimSpace(e); e != "" {
-			c.AdminEmails = append(c.AdminEmails, e)
+	for _, e := range strings.Split(os.Getenv("ADMIN_TELEGRAM_IDS"), ",") {
+		if e = strings.TrimSpace(e); e == "" {
+			continue
 		}
+		id, err := strconv.ParseInt(e, 10, 64)
+		if err != nil || id <= 0 {
+			errs = append(errs, fmt.Errorf("ADMIN_TELEGRAM_IDS: %q — Telegram ID raqam bo'lishi kerak", e))
+			continue
+		}
+		c.AdminTelegramIDs = append(c.AdminTelegramIDs, id)
+	}
+	if os.Getenv("ADMIN_EMAILS") != "" {
+		c.Warnings = append(c.Warnings, "ADMIN_EMAILS endi ishlatilmaydi — ADMIN_TELEGRAM_IDS ga Telegram ID'larni yozing")
 	}
 
-	if c.TelegramToken == "" {
-		c.Warnings = append(c.Warnings, "TELEGRAM_BOT_TOKEN berilmagan — xabarlar yuborilmaydi, Telegram ulash ishlamaydi")
-	}
 	if !c.SecureCookies() {
 		c.Warnings = append(c.Warnings, "BASE_URL https emas — productionda albatta https ishlating")
 	}

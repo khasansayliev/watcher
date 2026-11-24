@@ -1,24 +1,12 @@
 {{template "head" .}}
 <section class="card">
-  <h2>Telegram bildirishnomalari</h2>
-  {{if not .TelegramOK}}
-    <div class="warn">Telegram bot hali sozlanmagan (administrator TELEGRAM_BOT_TOKEN berishi kerak).</div>
-  {{else if .HasTG}}
-    <p>✅ Telegram ulangan. Bo'sh joy chiqsa xabar shu chatga keladi.</p>
-    <div class="row">
-      <form method="post" action="/settings/telegram/test"><button>Test xabar yuborish</button></form>
-      <form method="post" action="/settings/telegram/link"><button class="ghost">Boshqa chatga ulash</button></form>
-      <form method="post" action="/settings/telegram/unlink" onsubmit="return confirm('Telegram uzilsinmi? Xabarlar kelmay qoladi.')"><button class="ghost danger">Uzish</button></form>
-    </div>
-  {{else}}
-    <p>Telegram hali ulanmagan. Tugmani bosing — Telegram ochiladi, u yerda <b>Start</b> ni bosing.</p>
-    <form method="post" action="/settings/telegram/link"><button>Telegram'ni ulash</button></form>
-    <p class="hint">Havola 15 daqiqa amal qiladi va faqat bir marta ishlaydi. Ulangandan keyin bu sahifani yangilang.</p>
-  {{end}}
-</section>
-
-<section class="card">
-  <h2>Akkaunt</h2>
-  <p>{{.Email}} <small>· {{.Since}} dan beri</small></p>
+  <h2>Telegram akkaunt</h2>
+  <p><b>{{.Name}}</b>{{if .Handle}} <span class="hint">{{.Handle}}</span>{{end}} <small>· ID {{.TelegramID}} · {{.Since}} dan beri</small></p>
+  <p>Bo'sh joy chiqsa, xabar <b>@{{.BotUsername}}</b> boti orqali shu Telegram akkauntga keladi.</p>
+  <div class="row">
+    <form method="post" action="/settings/telegram/test"><button>Test xabar yuborish</button></form>
+  </div>
+  <p class="hint">Xabar kelmasa: Telegram'da <b>@{{.BotUsername}}</b> ni oching va <b>Start</b> bosing.
+    Botni bloklagan bo'lsangiz, <b>Unblock</b> qiling. Bot sizga faqat shundan keyin yoza oladi.</p>
 </section>
 {{template "foot" .}}

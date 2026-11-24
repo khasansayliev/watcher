@@ -6,39 +6,38 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/khasansayliev/watcher/internal/domain"
 )
 
-// AuthService — Google orqali kirish va sessiyalar.
+// ErrBadSignature — Telegram imzosi mos kelmadi (ma'lumot soxta yoki buzilgan).
+var ErrBadSignature = errors.New("telegram imzosi noto'g'ri")
+
+// AuthService — Telegram orqali kirish va sessiyalar.
 type AuthService struct {
-	idp      IdentityProvider
+	verifier IdentityVerifier
 	users    UserRepository
 	sessions SessionRepository
 	clock    Clock
 	ttl      time.Duration
 }
 
-func NewAuthService(idp IdentityProvider, users UserRepository, sessions SessionRepository, c Clock, ttl time.Duration) *AuthService {
-	return &AuthService{idp: idp, users: users, sessions: sessions, clock: c, ttl: ttl}
+func NewAuthService(v IdentityVerifier, users UserRepository, sessions SessionRepository, c Clock, ttl time.Duration) *AuthService {
+	return &AuthService{verifier: v, users: users, sessions: sessions, clock: c, ttl: ttl}
 }
 
-// LoginURL Google'ning kirish sahifasi havolasi. state — CSRF himoyasi uchun tasodifiy qiymat.
-func (s *AuthService) LoginURL(state string) string { return s.idp.AuthURL(state) }
-
-// Login Google qaytargan kodni sessiya tokeniga almashtiradi.
+// Login Telegram Login Widget qaytargan maydonlarni tekshiradi va sessiya ochadi.
 // Token faqat foydalanuvchiga (cookie) beriladi; bazada uning sha256 xeshi saqlanadi.
-func (s *AuthService) Login(ctx context.Context, code string) (token string, user domain.User, expires time.Time, err error) {
-	ident, err := s.idp.Exchange(ctx, code)
+func (s *AuthService) Login(ctx context.Context, fields map[string]string) (token string, user domain.User, expires time.Time, err error) {
+	ident, err := s.verifier.Verify(fields)
 	if err != nil {
-		return "", domain.User{}, time.Time{}, fmt.Errorf("google: %w", err)
-	}
-	if err := ident.Validate(); err != nil {
 		return "", domain.User{}, time.Time{}, err
 	}
 	now := s.clock.Now()
+	if err := ident.Validate(now); err != nil {
+		return "", domain.User{}, time.Time{}, err
+	}
 	user, err = s.users.UpsertByIdentity(ctx, ident, now)
 	if err != nil {
 		return "", domain.User{}, time.Time{}, err

@@ -18,7 +18,6 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 		layoutVM:   s.layout("Kuzatuvlar", r, u),
 		Stations:   s.d.Stations.All(),
 		Today:      s.d.Clock.Today(),
-		HasTG:      u.HasTelegram(),
 		MaxWatches: s.d.MaxWatches,
 	}
 	watches, err := s.d.Watches.List(r.Context(), u.ID)
@@ -136,42 +135,31 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
 	u := userFrom(r.Context())
 	s.render(w, "settings.html", settingsVM{
-		layoutVM:   s.layout("Sozlamalar", r, u),
-		HasTG:      u.HasTelegram(),
-		TelegramOK: s.d.TelegramOK,
-		Email:      u.Email,
-		Since:      u.CreatedAt.In(s.d.Clock.Now().Location()).Format("02.01.2006"),
+		layoutVM:    s.layout("Sozlamalar", r, u),
+		Name:        u.DisplayName(),
+		Handle:      u.Handle(),
+		TelegramID:  u.TelegramID,
+		BotUsername: s.d.BotUsername,
+		Since:       u.CreatedAt.In(s.d.Clock.Now().Location()).Format("02.01.2006"),
 	})
 }
 
-func (s *Server) telegramLink(w http.ResponseWriter, r *http.Request) {
-	link, err := s.d.Telegram.StartLink(r.Context(), userFrom(r.Context()).ID)
+func (s *Server) telegramTest(w http.ResponseWriter, r *http.Request) {
+	err := s.d.Telegram.SendTest(r.Context(), userFrom(r.Context()).ID)
+	if errors.Is(err, usecase.ErrBotBlocked) {
+		s.back(w, r, "/settings", "Bot sizga yoza olmayapti: Telegram'da @"+s.d.BotUsername+" ni oching va Start (yoki Unblock) bosing", "err")
+		return
+	}
 	if err != nil {
 		s.fail(w, r, "/settings", err)
 		return
 	}
-	http.Redirect(w, r, link, http.StatusSeeOther)
-}
-
-func (s *Server) telegramUnlink(w http.ResponseWriter, r *http.Request) {
-	if err := s.d.Telegram.Unlink(r.Context(), userFrom(r.Context()).ID); err != nil {
-		s.fail(w, r, "/settings", err)
-		return
-	}
-	s.back(w, r, "/settings", "Telegram uzildi", "ok")
-}
-
-func (s *Server) telegramTest(w http.ResponseWriter, r *http.Request) {
-	if err := s.d.Telegram.SendTest(r.Context(), userFrom(r.Context()).ID); err != nil {
-		s.fail(w, r, "/settings", err)
-		return
-	}
-	s.back(w, r, "/settings", "Test xabar yuborildi", "ok")
+	s.back(w, r, "/settings", "Test xabar yuborildi — Telegram'ni tekshiring", "ok")
 }
 
 // lastResponse — faqat administratorlar uchun (API formatini moslashtirishda kerak).
 func (s *Server) lastResponse(w http.ResponseWriter, r *http.Request) {
-	if !userFrom(r.Context()).IsAdmin(s.d.AdminEmails) {
+	if !userFrom(r.Context()).IsAdmin(s.d.AdminIDs) {
 		http.NotFound(w, r)
 		return
 	}
@@ -192,7 +180,7 @@ func pathID(r *http.Request) (int64, bool) {
 }
 
 func (s *Server) layout(title string, r *http.Request, u domain.User) layoutVM {
-	return s.p.layout(title, r.URL.Query().Get("msg"), r.URL.Query().Get("kind"), u, u.IsAdmin(s.d.AdminEmails), s.d.Status)
+	return s.p.layout(title, r.URL.Query().Get("msg"), r.URL.Query().Get("kind"), u, u.IsAdmin(s.d.AdminIDs), s.d.Status)
 }
 
 func (s *Server) render(w http.ResponseWriter, name string, vm any) {

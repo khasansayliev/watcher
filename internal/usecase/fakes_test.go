@@ -2,6 +2,7 @@ package usecase_test
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"sync"
@@ -99,15 +100,15 @@ func (r *memUsers) add(u domain.User) domain.User {
 func (r *memUsers) UpsertByIdentity(_ context.Context, id domain.Identity, now time.Time) (domain.User, error) {
 	r.mu.Lock()
 	for _, u := range r.m {
-		if u.GoogleSub == id.Subject {
-			u.Email, u.Name = id.Email, id.Name
+		if u.TelegramID == id.TelegramID {
+			u.Username, u.Name = id.Username, id.FullName()
 			r.m[u.ID] = u
 			r.mu.Unlock()
 			return u, nil
 		}
 	}
 	r.mu.Unlock()
-	return r.add(domain.User{GoogleSub: id.Subject, Email: id.Email, Name: id.Name, CreatedAt: now}), nil
+	return r.add(domain.User{TelegramID: id.TelegramID, Username: id.Username, Name: id.FullName(), CreatedAt: now}), nil
 }
 func (r *memUsers) Get(_ context.Context, id int64) (domain.User, error) {
 	r.mu.Lock()
@@ -117,23 +118,6 @@ func (r *memUsers) Get(_ context.Context, id int64) (domain.User, error) {
 		return domain.User{}, domain.ErrNotFound
 	}
 	return u, nil
-}
-func (r *memUsers) SetTelegramChat(_ context.Context, id int64, chat string) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	for k, u := range r.m {
-		if chat != "" && u.TelegramChatID == chat && k != id {
-			u.TelegramChatID = ""
-			r.m[k] = u
-		}
-	}
-	u, ok := r.m[id]
-	if !ok {
-		return domain.ErrNotFound
-	}
-	u.TelegramChatID = chat
-	r.m[id] = u
-	return nil
 }
 
 type session struct {
@@ -181,28 +165,6 @@ func (r *memSessions) DeleteExpired(_ context.Context, now time.Time) (int64, er
 	return n, nil
 }
 
-type memCodes struct {
-	mu sync.Mutex
-	m  map[string]session
-}
-
-func (r *memCodes) Create(_ context.Context, code string, uid int64, exp time.Time) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.m[code] = session{uid, exp}
-	return nil
-}
-func (r *memCodes) Consume(_ context.Context, code string, now time.Time) (int64, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	s, ok := r.m[code]
-	delete(r.m, code)
-	if !ok || !s.expires.After(now) {
-		return 0, domain.ErrNotFound
-	}
-	return s.user, nil
-}
-
 type memPolicy struct {
 	mu sync.Mutex
 	p  domain.PollingPolicy
@@ -237,8 +199,9 @@ func (f *fakeSearcher) Search(context.Context, domain.Route) ([]domain.Train, er
 type sentMsg struct{ chat, text string }
 
 type fakeNotifier struct {
-	mu   sync.Mutex
-	sent []sentMsg
+	mu      sync.Mutex
+	sent    []sentMsg
+	blocked map[string]bool // bu chatlar botni bloklagan
 }
 
 func (f *fakeNotifier) Enabled() bool { return true }
@@ -248,11 +211,11 @@ func (f *fakeNotifier) NotifyAvailability(_ context.Context, chat string, _ doma
 func (f *fakeNotifier) SendText(_ context.Context, chat, text string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.blocked[chat] {
+		return errors.New("telegram: Forbidden: bot was blocked by the user")
+	}
 	f.sent = append(f.sent, sentMsg{chat, text})
 	return nil
-}
-func (f *fakeNotifier) LinkURL(code string) (string, error) {
-	return "https://t.me/testbot?start=" + code, nil
 }
 func (f *fakeNotifier) count(chat string) int {
 	f.mu.Lock()
@@ -266,10 +229,16 @@ func (f *fakeNotifier) count(chat string) int {
 	return n
 }
 
-type fakeIDP struct{ ident domain.Identity }
+// fakeVerifier — imzo tekshiruvini simulyatsiya qiladi: valid=false bo'lsa ErrBadSignature.
+type fakeVerifier struct {
+	ident domain.Identity
+	valid bool
+}
 
-func (f *fakeIDP) AuthURL(state string) string { return "https://accounts.example/auth?state=" + state }
-func (f *fakeIDP) Exchange(context.Context, string) (domain.Identity, error) {
+func (f *fakeVerifier) Verify(map[string]string) (domain.Identity, error) {
+	if !f.valid {
+		return domain.Identity{}, usecase.ErrBadSignature
+	}
 	return f.ident, nil
 }
 
@@ -295,11 +264,10 @@ type env struct {
 	watches  *memWatches
 	users    *memUsers
 	sessions *memSessions
-	codes    *memCodes
 	search   *fakeSearcher
 	notif    *fakeNotifier
 	clock    *fixedClock
-	idp      *fakeIDP
+	verifier *fakeVerifier
 	policy   *memPolicy
 
 	monitor  *usecase.Monitor
@@ -314,29 +282,39 @@ var sample = []domain.Train{{Number: "764Ф", Cars: []domain.Car{{Type: "Сид�
 
 func newEnv(maxPerUser, maxSearches int) *env {
 	e := &env{
-		watches: &memWatches{},
-		users:   newMemUsers(),
-		codes:   &memCodes{m: map[string]session{}},
-		search:  &fakeSearcher{trains: sample},
-		notif:   &fakeNotifier{},
-		clock:   &fixedClock{t: time.Date(2026, 11, 23, 10, 0, 0, 0, time.UTC)},
-		idp:     &fakeIDP{},
-		policy:  &memPolicy{p: domain.DefaultPollingPolicy()},
+		watches:  &memWatches{},
+		users:    newMemUsers(),
+		search:   &fakeSearcher{trains: sample},
+		notif:    &fakeNotifier{},
+		clock:    &fixedClock{t: time.Date(2026, 11, 23, 10, 0, 0, 0, time.UTC)},
+		verifier: &fakeVerifier{valid: true},
+		policy:   &memPolicy{p: domain.DefaultPollingPolicy()},
 	}
 	e.sessions = &memSessions{m: map[string]session{}, u: e.users}
 	log := discardLog()
 	e.monitor = usecase.NewMonitor(e.watches, e.policy, e.users, e.search, e.notif, e.clock,
 		usecase.MonitorConfig{Tick: 10 * time.Second, MaxSearchesPerCycle: maxSearches}, log)
 	e.ws = usecase.NewWatchService(e.watches, e.users, e.clock, e.monitor, maxPerUser)
-	e.auth = usecase.NewAuthService(e.idp, e.users, e.sessions, e.clock, 24*time.Hour)
-	e.tg = usecase.NewTelegramService(e.users, e.codes, e.notif, e.clock)
+	e.auth = usecase.NewAuthService(e.verifier, e.users, e.sessions, e.clock, 24*time.Hour)
+	e.tg = usecase.NewTelegramService(e.users, e.notif, "https://watcher.test")
 	e.searchUC = usecase.NewSearchService(e.search, e.monitor, e.clock, 10*time.Second, 0)
-	e.polling = usecase.NewPollingService(e.policy, e.watches, e.clock, []string{"admin@example.com"})
+	e.polling = usecase.NewPollingService(e.policy, e.watches, e.clock, []int64{adminTG})
 	return e
 }
 
-func (e *env) user(chat string) domain.User {
-	return e.users.add(domain.User{Email: chat + "@example.com", TelegramChatID: chat})
+// adminTG — testlardagi administratorning Telegram ID'si.
+const adminTG = 999
+
+var tgSeq int64 = 1000
+
+func nextTG() int64 { tgSeq++; return tgSeq }
+
+func (e *env) admin() domain.User {
+	return e.users.add(domain.User{Username: "admin", TelegramID: adminTG})
+}
+
+func (e *env) user(name string) domain.User {
+	return e.users.add(domain.User{Username: name, TelegramID: nextTG()})
 }
 
 func discardLog() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }

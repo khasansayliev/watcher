@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -14,7 +15,6 @@ import (
 	"time"
 
 	"github.com/khasansayliev/watcher/internal/adapter/clock"
-	"github.com/khasansayliev/watcher/internal/adapter/google"
 	"github.com/khasansayliev/watcher/internal/adapter/railway"
 	"github.com/khasansayliev/watcher/internal/adapter/sqlite"
 	"github.com/khasansayliev/watcher/internal/adapter/stations"
@@ -57,7 +57,6 @@ func run(log *slog.Logger) error {
 	}
 	users := sqlite.NewUsers(db)
 	sessions := sqlite.NewSessions(db)
-	codes := sqlite.NewLinkCodes(db)
 	watchRepo := sqlite.NewWatches(db)
 	pollingRepo := sqlite.NewPollingRules(db)
 
@@ -75,11 +74,13 @@ func run(log *slog.Logger) error {
 	})
 	tgClient := telegram.NewClient(cfg.TelegramToken)
 	notifier := telegram.NewNotifier(tgClient, rail.BuyURL(), dir)
-	idp := google.New(google.Config{
-		ClientID:     cfg.GoogleClientID,
-		ClientSecret: cfg.GoogleClientSecret,
-		RedirectURL:  cfg.GoogleRedirectURL(),
-	})
+	verifier := telegram.NewLoginVerifier(cfg.TelegramToken)
+	botCtx, cancelMe := context.WithTimeout(ctx, 15*time.Second)
+	botUsername, err := tgClient.Username(botCtx) // Login Widget bot nomini talab qiladi
+	cancelMe()
+	if err != nil {
+		return fmt.Errorf("telegram bot (getMe): %w — TELEGRAM_BOT_TOKEN to'g'rimi?", err)
+	}
 
 	// --- usecase'lar ---
 	monitor := usecase.NewMonitor(watchRepo, pollingRepo, users, rail, notifier, clk, usecase.MonitorConfig{
@@ -88,11 +89,11 @@ func run(log *slog.Logger) error {
 		GroupPause:          2 * time.Second,
 		MaxSearchesPerCycle: cfg.MaxSearchesPerCycle,
 	}, log)
-	auth := usecase.NewAuthService(idp, users, sessions, clk, cfg.SessionTTL)
+	auth := usecase.NewAuthService(verifier, users, sessions, clk, cfg.SessionTTL)
 	watches := usecase.NewWatchService(watchRepo, users, clk, monitor, cfg.MaxWatchesPerUser)
 	search := usecase.NewSearchService(rail, monitor, clk, 10*time.Second, 2*time.Second)
-	tgService := usecase.NewTelegramService(users, codes, notifier, clk)
-	polling := usecase.NewPollingService(pollingRepo, watchRepo, clk, cfg.AdminEmails)
+	tgService := usecase.NewTelegramService(users, notifier, cfg.BaseURL)
+	polling := usecase.NewPollingService(pollingRepo, watchRepo, clk, cfg.AdminTelegramIDs)
 
 	// --- delivery ---
 	ui, err := webui.New(webui.Deps{
@@ -105,9 +106,10 @@ func run(log *slog.Logger) error {
 		Raw:           rail,
 		Stations:      dir,
 		Clock:         clk,
-		TelegramOK:    notifier.Enabled(),
+		BaseURL:       cfg.BaseURL,
+		BotUsername:   botUsername,
 		MaxWatches:    cfg.MaxWatchesPerUser,
-		AdminEmails:   cfg.AdminEmails,
+		AdminIDs:      cfg.AdminTelegramIDs,
 		SecureCookies: cfg.SecureCookies(),
 	})
 	if err != nil {
@@ -127,7 +129,7 @@ func run(log *slog.Logger) error {
 		_ = srv.Shutdown(shCtx)
 	}()
 
-	log.Info("ishga tushdi", "listen", cfg.Listen, "base_url", cfg.BaseURL, "db", cfg.DatabasePath)
+	log.Info("ishga tushdi", "listen", cfg.Listen, "base_url", cfg.BaseURL, "bot", "@"+botUsername, "db", cfg.DatabasePath)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}

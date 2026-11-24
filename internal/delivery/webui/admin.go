@@ -46,7 +46,7 @@ func (s *Server) adminPolling(w http.ResponseWriter, r *http.Request) {
 	u := userFrom(r.Context())
 	stats, err := s.d.Polling.Stats(r.Context(), u)
 	if err != nil {
-		if r.Method == http.MethodGet && !u.IsAdmin(s.d.AdminEmails) {
+		if r.Method == http.MethodGet && !u.IsAdmin(s.d.AdminIDs) {
 			http.NotFound(w, r)
 			return
 		}
@@ -96,7 +96,7 @@ func (s *Server) adminPolling(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) adminPollingSave(w http.ResponseWriter, r *http.Request) {
 	u := userFrom(r.Context())
-	if !u.IsAdmin(s.d.AdminEmails) {
+	if !u.IsAdmin(s.d.AdminIDs) {
 		http.NotFound(w, r)
 		return
 	}

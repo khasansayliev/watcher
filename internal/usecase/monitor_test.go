@@ -3,6 +3,7 @@ package usecase_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -30,12 +31,12 @@ func TestMonitorOneRequestPerRouteAcrossUsers(t *testing.T) {
 	if e.search.calls != 1 {
 		t.Fatalf("bir xil yo'nalish uchun 1 so'rov kutilgan, %d", e.search.calls)
 	}
-	if e.notif.count("A") != 1 || e.notif.count("B") != 1 {
+	if e.notif.count(a.ChatID()) != 1 || e.notif.count(b.ChatID()) != 1 {
 		t.Fatalf("har bir foydalanuvchi o'z chatiga xabar olishi kerak: %+v", e.notif.sent)
 	}
 
 	e.monitor.RunCycle(ctx, 0)
-	if e.notif.count("A") != 1 {
+	if e.notif.count(a.ChatID()) != 1 {
 		t.Fatal("o'zgarish yo'q — takror xabar bo'lmasligi kerak")
 	}
 }
@@ -63,23 +64,23 @@ func TestMonitorRespectsSearchCapAndRotates(t *testing.T) {
 	}
 }
 
-func TestMonitorUserWithoutTelegram(t *testing.T) {
+func TestMonitorUserBlockedBot(t *testing.T) {
 	e := newEnv(10, 0)
 	ctx := context.Background()
 	u := e.user("A")
 	w := mustCreate(t, e, u, "2900000", "2900700", "2026-12-05")
-	_ = e.tg.Unlink(ctx, u.ID) // kuzatuv yaratilgandan keyin uzdi
+	e.notif.blocked = map[string]bool{u.ChatID(): true}
 
 	e.monitor.RunCycle(ctx, 0)
 	got, _ := e.watches.Get(ctx, w.ID)
-	if got.LastSig != "" || len(e.notif.sent) != 0 {
-		t.Fatal("Telegram yo'q — xabar ketmasligi va imzo saqlanmasligi kerak")
+	if got.LastSig != "" || !strings.Contains(got.LastStatus, "Telegram xato") {
+		t.Fatalf("xabar yetmasa imzo saqlanmasligi va xato ko'rinishi kerak: %+v", got)
 	}
-	_ = e.users.SetTelegramChat(ctx, u.ID, "A2")
-	e.clock.add(2 * time.Hour) // 12 kun qolgan — oraliq 1 soat
+	e.notif.blocked = nil // foydalanuvchi botni qayta yoqdi
+	e.clock.add(2 * time.Hour)
 	e.monitor.RunCycle(ctx, 0)
-	if e.notif.count("A2") != 1 {
-		t.Fatal("qayta ulangach xabar kelishi kerak")
+	if e.notif.count(u.ChatID()) != 1 {
+		t.Fatal("blokdan chiqqach xabar kelishi kerak")
 	}
 }
 
@@ -160,7 +161,7 @@ func TestMonitorPolicyChangeAppliesWithoutRestart(t *testing.T) {
 	mustCreate(t, e, e.user("A"), "2900000", "2900700", "2027-01-10") // 12 soat
 	e.monitor.RunCycle(ctx, 0)
 
-	admin := e.users.add(domain.User{Email: "admin@example.com"})
+	admin := e.admin()
 	if _, err := e.polling.Update(ctx, admin, []domain.PollingRule{{MaxDaysLeft: 0, Interval: time.Minute}}); err != nil {
 		t.Fatal(err)
 	}

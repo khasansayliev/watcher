@@ -206,12 +206,12 @@ func (m *Monitor) evaluate(ctx context.Context, w domain.Watch, trains []domain.
 		chat, ok := chats[w.UserID]
 		if !ok {
 			if u, err := m.users.Get(ctx, w.UserID); err == nil {
-				chat = u.TelegramChatID
+				chat = u.ChatID()
 			}
 			chats[w.UserID] = chat
 		}
 		if chat == "" {
-			nerr = errors.New("Telegram ulanmagan")
+			nerr = errors.New("foydalanuvchi topilmadi")
 		} else {
 			nerr = m.notifier.NotifyAvailability(ctx, chat, w.Route, matches)
 		}

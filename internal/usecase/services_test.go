@@ -3,7 +3,6 @@ package usecase_test
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 	"time"
 
@@ -14,47 +13,57 @@ import (
 func TestAuthLoginAndSession(t *testing.T) {
 	e := newEnv(10, 0)
 	ctx := context.Background()
-	e.idp.ident = domain.Identity{Subject: "g-1", Email: "ali@example.com", EmailVerified: true, Name: "Ali"}
+	e.verifier.ident = domain.Identity{TelegramID: 777, FirstName: "Ali", Username: "ali", AuthDate: e.clock.Now().Add(-time.Minute)}
 
-	token, u, _, err := e.auth.Login(ctx, "code")
+	token, u, _, err := e.auth.Login(ctx, map[string]string{"id": "777"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(token) < 40 {
-		t.Fatalf("token juda qisqa: %q", token)
+	if len(token) < 40 || u.TelegramID != 777 || u.ChatID() != "777" {
+		t.Fatalf("token/user: %q %+v", token, u)
 	}
 	if _, ok := e.sessions.m[token]; ok {
 		t.Fatal("bazada token emas, uning xeshi saqlanishi kerak")
 	}
-	got, err := e.auth.Authenticate(ctx, token)
-	if err != nil || got.ID != u.ID {
+	if got, err := e.auth.Authenticate(ctx, token); err != nil || got.ID != u.ID {
 		t.Fatalf("sessiya ishlamadi: %v", err)
 	}
 
-	// Qayta kirish — yangi user yaratilmaydi.
-	_, u2, _, _ := e.auth.Login(ctx, "code")
-	if u2.ID != u.ID {
-		t.Fatal("bir Google akkaunt — bitta foydalanuvchi bo'lishi kerak")
+	// Qayta kirish — yangi user yaratilmaydi, profil yangilanadi.
+	e.verifier.ident.Username = "ali_new"
+	_, u2, _, _ := e.auth.Login(ctx, nil)
+	if u2.ID != u.ID || u2.Username != "ali_new" {
+		t.Fatalf("bitta Telegram akkaunt — bitta foydalanuvchi: %+v", u2)
 	}
 
 	_ = e.auth.Logout(ctx, token)
 	if _, err := e.auth.Authenticate(ctx, token); !errors.Is(err, domain.ErrUnauthorized) {
 		t.Fatal("chiqqandan keyin sessiya yaroqsiz bo'lishi kerak")
 	}
-
-	token, _, _, _ = e.auth.Login(ctx, "code")
+	token, _, _, _ = e.auth.Login(ctx, nil)
 	e.clock.add(25 * time.Hour)
 	if _, err := e.auth.Authenticate(ctx, token); !errors.Is(err, domain.ErrUnauthorized) {
 		t.Fatal("muddati o'tgan sessiya rad etilishi kerak")
 	}
 }
 
-func TestAuthRejectsUnverifiedEmail(t *testing.T) {
+func TestAuthRejectsBadSignatureAndStaleData(t *testing.T) {
 	e := newEnv(10, 0)
-	e.idp.ident = domain.Identity{Subject: "g-1", Email: "x@example.com", EmailVerified: false}
+	ctx := context.Background()
+
+	e.verifier.valid = false
+	if _, _, _, err := e.auth.Login(ctx, nil); !errors.Is(err, usecase.ErrBadSignature) {
+		t.Fatalf("soxta imzo rad etilishi kerak: %v", err)
+	}
+
+	e.verifier.valid = true
+	e.verifier.ident = domain.Identity{TelegramID: 777, AuthDate: e.clock.Now().Add(-2 * time.Hour)}
 	var ve *domain.ValidationError
-	if _, _, _, err := e.auth.Login(context.Background(), "code"); !errors.As(err, &ve) {
-		t.Fatalf("ValidationError kutilgan: %v", err)
+	if _, _, _, err := e.auth.Login(ctx, nil); !errors.As(err, &ve) {
+		t.Fatalf("eskirgan (qayta ishlatilgan) ma'lumot rad etilishi kerak: %v", err)
+	}
+	if len(e.users.m) != 0 || len(e.sessions.m) != 0 {
+		t.Fatal("rad etilgan urinish foydalanuvchi yoki sessiya yaratmasligi kerak")
 	}
 }
 
@@ -97,48 +106,16 @@ func TestWatchLimitPerUser(t *testing.T) {
 	}
 }
 
-func TestTelegramLinkFlow(t *testing.T) {
+func TestTelegramSendTest(t *testing.T) {
 	e := newEnv(10, 0)
 	ctx := context.Background()
-	u := e.users.add(domain.User{Email: "ali@example.com"})
-
-	var ve *domain.ValidationError
-	if _, err := e.ws.Create(ctx, u.ID, usecase.CreateWatchInput{Route: domain.Route{From: "1", To: "2", Date: "2026-12-05"}}); !errors.As(err, &ve) {
-		t.Fatal("Telegram'siz kuzatuv yaratib bo'lmasligi kerak")
+	u := e.user("A")
+	if err := e.tg.SendTest(ctx, u.ID); err != nil || e.notif.count(u.ChatID()) != 1 {
+		t.Fatalf("test xabar o'z chatiga borishi kerak: %v", err)
 	}
-
-	link, err := e.tg.StartLink(ctx, u.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	code := link[strings.Index(link, "start=")+6:]
-	if err := e.tg.LinkChat(ctx, code, "555"); err != nil {
-		t.Fatal(err)
-	}
-	if got, _ := e.users.Get(ctx, u.ID); got.TelegramChatID != "555" {
-		t.Fatal("chat bog'lanmadi")
-	}
-	if err := e.tg.LinkChat(ctx, code, "666"); !errors.Is(err, domain.ErrNotFound) {
-		t.Fatal("kod faqat bir marta ishlashi kerak")
-	}
-
-	link, _ = e.tg.StartLink(ctx, u.ID)
-	e.clock.add(16 * time.Minute)
-	if err := e.tg.LinkChat(ctx, link[strings.Index(link, "start=")+6:], "777"); !errors.Is(err, domain.ErrNotFound) {
-		t.Fatal("eskirgan kod rad etilishi kerak")
-	}
-}
-
-func TestTelegramChatMovesBetweenAccounts(t *testing.T) {
-	e := newEnv(10, 0)
-	ctx := context.Background()
-	a := e.user("555")
-	b := e.users.add(domain.User{Email: "b@example.com"})
-	link, _ := e.tg.StartLink(ctx, b.ID)
-	_ = e.tg.LinkChat(ctx, link[strings.Index(link, "start=")+6:], "555")
-
-	if got, _ := e.users.Get(ctx, a.ID); got.TelegramChatID != "" {
-		t.Fatal("bitta chat ikki akkauntga bog'lanib qolmasligi kerak")
+	e.notif.blocked = map[string]bool{u.ChatID(): true}
+	if err := e.tg.SendTest(ctx, u.ID); !errors.Is(err, usecase.ErrBotBlocked) {
+		t.Fatalf("bloklangan bot uchun ErrBotBlocked kutilgan: %v", err)
 	}
 }
 
@@ -166,8 +143,8 @@ func TestSearchThrottlePerUser(t *testing.T) {
 func TestPollingUpdateAdminOnly(t *testing.T) {
 	e := newEnv(10, 0)
 	ctx := context.Background()
-	user := e.users.add(domain.User{Email: "ali@example.com"})
-	admin := e.users.add(domain.User{Email: "Admin@Example.com"})
+	user := e.user("ali")
+	admin := e.admin()
 	rules := []domain.PollingRule{{MaxDaysLeft: 3, Interval: 30 * time.Second}, {MaxDaysLeft: 0, Interval: 6 * time.Hour}}
 
 	if _, err := e.polling.Update(ctx, user, rules); !errors.Is(err, domain.ErrForbidden) {
@@ -180,7 +157,7 @@ func TestPollingUpdateAdminOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.UpdatedBy != "Admin@Example.com" || p.UpdatedAt.IsZero() {
+	if p.UpdatedBy != "@admin" || p.UpdatedAt.IsZero() {
 		t.Fatalf("kim/qachon yozilmadi: %+v", p)
 	}
 	var ve *domain.ValidationError
@@ -200,7 +177,7 @@ func TestPollingStats(t *testing.T) {
 	mustCreate(t, e, b, "2900000", "2900700", "2026-11-24") // xuddi shu yo'nalish
 	mustCreate(t, e, a, "2900000", "2900800", "2027-02-01")
 
-	stats, err := e.polling.Stats(ctx, e.users.add(domain.User{Email: "admin@example.com"}))
+	stats, err := e.polling.Stats(ctx, e.admin())
 	if err != nil {
 		t.Fatal(err)
 	}

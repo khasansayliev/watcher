@@ -1,7 +1,4 @@
 {{template "head" .}}
-{{if not .HasTG}}
-<div class="warn">Bildirishnomalar Telegram orqali keladi. Kuzatuv yaratishdan oldin <a href="/settings">Sozlamalar</a> sahifasida Telegram'ni ulang.</div>
-{{end}}
 <section class="card">
   <h2>Yangi kuzatuv</h2>
   <form method="post" action="/watches" class="grid">
@@ -23,7 +20,7 @@
     <label class="wide">Turi / klass filtri
       <input name="car_type" maxlength="64" placeholder="masalan: Afrosiyob, Купе, 2E (ixtiyoriy)">
     </label>
-    <button type="submit"{{if not .HasTG}} disabled{{end}}>Kuzatuv yaratish</button>
+    <button type="submit">Kuzatuv yaratish</button>
   </form>
 </section>
 

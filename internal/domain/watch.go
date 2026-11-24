@@ -32,9 +32,6 @@ type NewWatchParams struct {
 // NewWatch biznes qoidalarini tekshirib, foydalanuvchiga tegishli yangi faol kuzatuv yaratadi.
 func NewWatch(owner User, p NewWatchParams, today string, now time.Time) (Watch, error) {
 	p.Filter.CarType = strings.TrimSpace(p.Filter.CarType)
-	if !owner.HasTelegram() {
-		return Watch{}, NewValidationError("Avval Telegram'ni ulang (Sozlamalar sahifasi) — xabarlar o'sha yerga keladi")
-	}
 	if err := p.Route.Validate(today); err != nil {
 		return Watch{}, err
 	}

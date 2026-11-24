@@ -20,8 +20,7 @@ var templatesFS embed.FS
 // ---- Delivery qatlami kutadigan kirish portlari ----
 
 type AuthUseCase interface {
-	LoginURL(state string) string
-	Login(ctx context.Context, code string) (token string, user domain.User, expires time.Time, err error)
+	Login(ctx context.Context, fields map[string]string) (token string, user domain.User, expires time.Time, err error)
 	Authenticate(ctx context.Context, token string) (domain.User, error)
 	Logout(ctx context.Context, token string) error
 }
@@ -39,8 +38,6 @@ type SearchUseCase interface {
 }
 
 type TelegramUseCase interface {
-	StartLink(ctx context.Context, userID int64) (string, error)
-	Unlink(ctx context.Context, userID int64) error
 	SendTest(ctx context.Context, userID int64) error
 }
 
@@ -68,10 +65,11 @@ type Deps struct {
 	Raw           RawResponseSource
 	Stations      usecase.StationDirectory
 	Clock         usecase.Clock
-	TelegramOK    bool
+	BaseURL       string // tashqi manzil: widget callback'i shundan yasaladi
+	BotUsername   string // widget uchun bot nomi (@siz)
 	MaxWatches    int
-	AdminEmails   []string
-	SecureCookies bool // BASE_URL https bo'lsa true
+	AdminIDs      []int64 // administratorlarning Telegram ID'lari
+	SecureCookies bool    // BASE_URL https bo'lsa true
 }
 
 type Server struct {
@@ -94,8 +92,7 @@ func (s *Server) Handler() http.Handler {
 	// ochiq
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
 	mux.HandleFunc("GET /login", s.loginPage)
-	mux.HandleFunc("GET /auth/google", s.googleStart)
-	mux.HandleFunc("GET /auth/google/callback", s.googleCallback)
+	mux.HandleFunc("GET "+callbackPath, s.telegramCallback)
 	mux.HandleFunc("POST /logout", s.logout)
 
 	// faqat kirganlar uchun
@@ -106,8 +103,6 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /watches/{id}/check", s.auth(s.checkWatch))
 	mux.Handle("GET /search", s.auth(s.search))
 	mux.Handle("GET /settings", s.auth(s.settings))
-	mux.Handle("POST /settings/telegram/link", s.auth(s.telegramLink))
-	mux.Handle("POST /settings/telegram/unlink", s.auth(s.telegramUnlink))
 	mux.Handle("POST /settings/telegram/test", s.auth(s.telegramTest))
 	mux.Handle("GET /debug/last-response", s.auth(s.lastResponse))
 	mux.Handle("GET /admin/polling", s.auth(s.adminPolling))
@@ -138,6 +133,10 @@ func securityHeaders(next http.Handler) http.Handler {
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "same-origin")
+		// Telegram Login Widget skripti va oynasi; boshqa hech qanday tashqi manbaga ruxsat yo'q.
+		h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' https://telegram.org; "+
+			"frame-src https://oauth.telegram.org; img-src 'self' data: https://t.me https://*.telegram.org https://cdn4.telegram-cdn.org https://*.telegram-cdn.org; "+
+			"style-src 'self' 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'")
 		next.ServeHTTP(w, r)
 	})
 }

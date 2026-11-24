@@ -24,11 +24,9 @@ type WatchRepository interface {
 }
 
 type UserRepository interface {
-	// UpsertByIdentity Google sub bo'yicha foydalanuvchini yaratadi yoki profilini yangilaydi.
+	// UpsertByIdentity Telegram ID bo'yicha foydalanuvchini yaratadi yoki profilini (ism, username, rasm) yangilaydi.
 	UpsertByIdentity(ctx context.Context, id domain.Identity, now time.Time) (domain.User, error)
 	Get(ctx context.Context, id int64) (domain.User, error)
-	// SetTelegramChat chatID ni bog'laydi ("" = uzish). Shu chat boshqa userda bo'lsa, undan olinadi.
-	SetTelegramChat(ctx context.Context, userID int64, chatID string) error
 }
 
 type SessionRepository interface {
@@ -37,12 +35,6 @@ type SessionRepository interface {
 	UserByToken(ctx context.Context, tokenHash []byte, now time.Time) (domain.User, error)
 	Delete(ctx context.Context, tokenHash []byte) error
 	DeleteExpired(ctx context.Context, now time.Time) (int64, error)
-}
-
-type LinkCodeRepository interface {
-	Create(ctx context.Context, code string, userID int64, expiresAt time.Time) error
-	// Consume kodni bir martalik ishlatadi; yaroqsiz/eskirgan bo'lsa domain.ErrNotFound.
-	Consume(ctx context.Context, code string, now time.Time) (userID int64, err error)
 }
 
 // PollingRuleRepository — tekshiruv oraliqlari jadvali (admin boshqaradi).
@@ -58,10 +50,10 @@ type TrainSearcher interface {
 	Search(ctx context.Context, r domain.Route) ([]domain.Train, error)
 }
 
-// IdentityProvider — OAuth provayder (Google).
-type IdentityProvider interface {
-	AuthURL(state string) string
-	Exchange(ctx context.Context, code string) (domain.Identity, error)
+// IdentityVerifier — Telegram Login Widget qaytargan maydonlarni (id, first_name, ..., auth_date, hash)
+// imzo bo'yicha tekshiradi. Imzo noto'g'ri bo'lsa xato qaytaradi.
+type IdentityVerifier interface {
+	Verify(fields map[string]string) (domain.Identity, error)
 }
 
 // Notifier — foydalanuvchiga xabar yetkazish (Telegram).
@@ -69,8 +61,6 @@ type Notifier interface {
 	Enabled() bool
 	NotifyAvailability(ctx context.Context, chatID string, r domain.Route, matches []domain.Match) error
 	SendText(ctx context.Context, chatID, text string) error
-	// LinkURL — foydalanuvchi bosganda botni kod bilan ochadigan havola (t.me/<bot>?start=<code>).
-	LinkURL(code string) (string, error)
 }
 
 type StationDirectory interface {

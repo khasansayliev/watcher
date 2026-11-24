@@ -1,15 +1,15 @@
 -- Vaqtlar INTEGER: Unix millisekund (UTC). NULL = hali bo'lmagan.
 -- Sanalar TEXT: 'YYYY-MM-DD' (leksikografik solishtirish to'g'ri ishlaydi).
 
+-- Foydalanuvchi Telegram orqali kiradi; telegram_id — bot bilan shaxsiy chat ID'si ham.
 CREATE TABLE users (
-    id               INTEGER PRIMARY KEY AUTOINCREMENT,
-    google_sub       TEXT    NOT NULL UNIQUE,
-    email            TEXT    NOT NULL,
-    name             TEXT    NOT NULL DEFAULT '',
-    avatar_url       TEXT    NOT NULL DEFAULT '',
-    telegram_chat_id TEXT    UNIQUE,
-    created_at       INTEGER NOT NULL,
-    last_login_at    INTEGER NOT NULL
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    telegram_id   INTEGER NOT NULL UNIQUE CHECK (telegram_id > 0),
+    username      TEXT    NOT NULL DEFAULT '',
+    name          TEXT    NOT NULL DEFAULT '',
+    photo_url     TEXT    NOT NULL DEFAULT '',
+    created_at    INTEGER NOT NULL,
+    last_login_at INTEGER NOT NULL
 );
 
 CREATE TABLE sessions (
@@ -20,12 +20,6 @@ CREATE TABLE sessions (
 );
 CREATE INDEX sessions_expires_idx ON sessions (expires_at);
 CREATE INDEX sessions_user_idx ON sessions (user_id);
-
-CREATE TABLE telegram_link_codes (
-    code       TEXT    PRIMARY KEY,
-    user_id    INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-    expires_at INTEGER NOT NULL
-);
 
 CREATE TABLE watches (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,

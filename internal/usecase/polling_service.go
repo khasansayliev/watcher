@@ -12,11 +12,11 @@ type PollingService struct {
 	repo    PollingRuleRepository
 	watches WatchRepository
 	clock   Clock
-	admins  []string
+	admins  []int64
 }
 
-func NewPollingService(repo PollingRuleRepository, watches WatchRepository, c Clock, adminEmails []string) *PollingService {
-	return &PollingService{repo: repo, watches: watches, clock: c, admins: adminEmails}
+func NewPollingService(repo PollingRuleRepository, watches WatchRepository, c Clock, adminTelegramIDs []int64) *PollingService {
+	return &PollingService{repo: repo, watches: watches, clock: c, admins: adminTelegramIDs}
 }
 
 // Policy — joriy jadval (hamma foydalanuvchi o'qiy oladi: o'z kuzatuvining oralig'ini ko'rish uchun).
@@ -34,7 +34,10 @@ func (s *PollingService) Update(ctx context.Context, actor domain.User, rules []
 		return domain.PollingPolicy{}, err
 	}
 	p.UpdatedAt = s.clock.Now()
-	p.UpdatedBy = actor.Email
+	p.UpdatedBy = actor.DisplayName()
+	if h := actor.Handle(); h != "" && h != p.UpdatedBy {
+		p.UpdatedBy += " (" + h + ")"
+	}
 	if err := s.repo.Save(ctx, p); err != nil {
 		return domain.PollingPolicy{}, err
 	}

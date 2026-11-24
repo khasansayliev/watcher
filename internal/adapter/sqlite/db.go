@@ -124,10 +124,6 @@ func fromMS(v sql.NullInt64) time.Time {
 	return time.UnixMilli(v.Int64)
 }
 
-func nullString(s string) sql.NullString {
-	return sql.NullString{String: s, Valid: s != ""}
-}
-
 func boolInt(b bool) int {
 	if b {
 		return 1
