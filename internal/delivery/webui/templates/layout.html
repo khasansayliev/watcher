@@ -3,6 +3,8 @@
   :root { --bg:#f5f6f8; --card:#fff; --ink:#1d2330; --muted:#6b7385; --line:#e3e6ec;
           --accent:#1565c0; --ok:#1b7f3b; --okbg:#e6f4ea; --err:#b3261e; --errbg:#fdecea; --warnbg:#fff4e0; }
   * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust:100%; }
+  img { max-width:100%; }
   body { margin:0; font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--ink); }
   header { background:var(--card); border-bottom:1px solid var(--line); padding:10px 20px; display:flex; gap:24px; align-items:center; }
   header .logo { font-weight:700; color:var(--ink); text-decoration:none; }
@@ -13,9 +15,10 @@
   main { max-width:1100px; margin:20px auto; padding:0 16px; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:18px 20px; margin-bottom:18px; }
   h2 { margin:0 0 14px; font-size:18px; }
-  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:12px; align-items:end; }
-  .grid .wide { grid-column:span 2; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,200px),1fr)); gap:12px; align-items:end; }
+  .grid .wide { grid-column:1 / -1; }  /* barcha ustunlarga: telefonda ortiqcha ustun yaratmaydi */
   label { display:flex; flex-direction:column; gap:4px; font-size:13px; color:var(--muted); }
+  label > input:not([type=checkbox]), label > select { width:100%; min-width:0; max-width:100%; }
   input, select { font:inherit; padding:8px 10px; border:1px solid var(--line); border-radius:7px; background:#fff; color:var(--ink); }
   button, .btn { font:inherit; padding:8px 14px; border:0; border-radius:7px; background:var(--accent); color:#fff; cursor:pointer; text-decoration:none; display:inline-block; }
   button:disabled { opacity:.5; cursor:not-allowed; }
@@ -40,16 +43,63 @@
   .seats { font-weight:600; color:var(--ok); }
   .none { color:var(--muted); }
   footer { text-align:center; color:var(--muted); font-size:12px; padding:20px; }
-  .login { max-width:400px; margin:12vh auto; text-align:center; }
+  .login { width:calc(100% - 32px); max-width:400px; margin:8vh auto; text-align:center; }
   .login h1 { font-size:22px; margin:0 0 6px; }
   .or { display:flex; align-items:center; gap:12px; margin:26px 0 18px; color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.05em; }
   .or::before, .or::after { content:""; flex:1; height:1px; background:var(--line); }
   .steps { text-align:left; margin:10px 0 14px; padding-left:20px; font-size:14px; }
   .steps li { margin-bottom:6px; }
   .codeform { display:flex; gap:8px; justify-content:center; }
-  .codeform input { width:11em; text-align:center; font:600 18px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:.12em; text-transform:uppercase; }
+  .codeform input { width:11em; min-width:0; flex:1 1 9em; max-width:13em; text-align:center; font:600 18px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:.12em; text-transform:uppercase; }
   .gbtn { display:inline-flex; align-items:center; gap:10px; background:#fff; color:#1f1f1f; border:1px solid #dadce0; padding:10px 18px; border-radius:7px; text-decoration:none; font-weight:500; }
   .gbtn:hover { background:#f8f9fa; }
+
+  /* ---- Planshet va telefon ---- */
+  td[data-label]::before { content:attr(data-label); display:none; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin-bottom:1px; }
+  td, th, h2 { overflow-wrap:anywhere; }
+
+  @media (max-width: 860px) {
+    /* sarlavha: 1-qator logo + foydalanuvchi, 2-qator menyu */
+    header { flex-wrap:wrap; gap:6px 12px; padding:10px 14px; }
+    header .me { margin-left:auto; gap:8px; min-width:0; }
+    header .me span { max-width:14ch; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    header nav { order:3; flex:1 0 100%; display:flex; gap:6px; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:2px; }
+    header nav a { margin:0; padding:7px 12px; border-radius:20px; background:var(--bg); white-space:nowrap; }
+    main { margin:14px auto; padding:0 12px; }
+    .card { padding:16px 14px; margin-bottom:14px; }
+
+    /* qulay bosiladigan elementlar; 16px — iOS maydonga bosganda sahifani kattalashtirib yubormasligi uchun */
+    input, select, button, .btn { font-size:16px; }
+    input, select { min-height:44px; }
+    button, .btn { min-height:44px; }
+    button.ghost { min-height:40px; padding:8px 14px; font-size:14px; }
+    .grid > button { width:100%; }
+    input[type=checkbox] { min-height:0; width:20px; height:20px; }
+
+    /* jadval qatorlari kartaga aylanadi: sarlavha qatori yo'q, har bir katak o'z yorlig'i bilan */
+    table.stack thead { display:none; }
+    table.stack, table.stack tbody { display:block; width:100%; }
+    table.stack tr { display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:2px 16px;
+                     border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:12px; background:var(--card); }
+    table.stack td { display:block; border:0; padding:5px 0; min-width:0; }
+    table.stack td[data-label]::before { display:block; }
+    table.stack td.full, table.stack td.actions { grid-column:1 / -1; }
+    table.stack td:empty { display:none; }
+    table.stack tr.off { background:var(--bg); }
+    .actions { display:flex; flex-wrap:wrap; gap:8px; white-space:normal; padding-top:8px; }
+    .actions a { display:inline-block; }
+    .row { gap:8px; }
+  }
+
+  @media (max-width: 480px) {
+    header .me span { display:none; }  /* ism joyni egallamasin: avatar va "Chiqish" yetarli */
+    header nav { gap:4px; }
+    header nav a { padding:7px 10px; font-size:14px; }
+    .login { margin:5vh auto; }
+    .codeform { flex-wrap:wrap; }
+    .codeform input, .codeform button { flex:1 1 100%; max-width:none; }
+    h2 { font-size:17px; }
+  }
 </style>
 {{end}}
 

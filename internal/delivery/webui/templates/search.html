@@ -23,16 +23,16 @@
   {{else if not .Trains}}
     <p class="none">Bu sanaga poyezd topilmadi.</p>
   {{else}}
-  <table>
+  <table class="stack">
     <thead><tr><th>Poyezd</th><th>Jo'nash</th><th>Yetib borish</th><th>Yo'lda</th><th>Vagonlar: joy / narx</th></tr></thead>
     <tbody>
     {{range .Trains}}
       <tr>
-        <td><b>{{.Number}}</b><br><small>{{.Label}}</small></td>
-        <td>{{.Departure}}</td>
-        <td>{{.Arrival}}</td>
-        <td>{{.Duration}}</td>
-        <td>
+        <td class="full" data-label="Poyezd"><b>{{.Number}}</b> <small>{{.Label}}</small></td>
+        <td data-label="Jo'nash">{{.Departure}}</td>
+        <td data-label="Yetib borish">{{.Arrival}}</td>
+        <td data-label="Yo'lda">{{.Duration}}</td>
+        <td class="full" data-label="Vagonlar: joy / narx">
           {{if .Cars}}
           <ul class="cars">
             {{range .Cars}}
