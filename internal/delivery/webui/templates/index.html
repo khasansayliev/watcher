@@ -1,15 +1,22 @@
 {{template "head" .}}
 <section class="card">
   <h2>Yangi kuzatuv</h2>
+  {{if .CreateBlocked}}<div class="warn">{{.CreateBlocked}}<br><small>Ruxsat bo'lmaguncha mavjud kuzatuvlaringiz ham tekshirilmaydi va xabar yubormaydi.</small></div>{{end}}
   <form method="post" action="/watches" class="grid">
     <label>Qayerdan
-      <select name="from" required>{{range .Stations}}<option value="{{.Code}}">{{.Name}}</option>{{end}}</select>
+      <select name="from" required>{{$df := .DefaultFrom}}{{range .Stations}}<option value="{{.Code}}"{{if eq .Code $df}} selected{{end}}>{{.Name}}</option>{{end}}</select>
     </label>
     <label>Qayerga
-      <select name="to" required>{{range $i, $s := .Stations}}<option value="{{$s.Code}}"{{if eq $i 1}} selected{{end}}>{{$s.Name}}</option>{{end}}</select>
+      <select name="to" required>{{$dt := .DefaultTo}}{{range .Stations}}<option value="{{.Code}}"{{if eq .Code $dt}} selected{{end}}>{{.Name}}</option>{{end}}</select>
     </label>
     <label>Sana
       <input type="date" name="date" min="{{.Today}}" value="{{.Today}}" required>
+    </label>
+    <label>Jo'nash vaqti: dan
+      <input type="time" name="time_from">
+    </label>
+    <label>Jo'nash vaqti: gacha
+      <input type="time" name="time_to">
     </label>
     <label>Maks. narx, so'm
       <input type="number" name="max_price" min="0" step="1000" placeholder="ixtiyoriy">
@@ -20,7 +27,8 @@
     <label class="wide">Turi / klass filtri
       <input name="car_type" maxlength="64" placeholder="masalan: Afrosiyob, Купе, 2E (ixtiyoriy)">
     </label>
-    <button type="submit">Kuzatuv yaratish</button>
+    <p class="hint wide">Jo'nash vaqti ixtiyoriy: faqat «dan» — shu vaqtdan keyingi poyezdlar, faqat «gacha» — shu vaqtgacha bo'lganlar, ikkalasi — shu oraliqdagilar, bo'sh qoldirsangiz — kun bo'yicha hammasi.</p>
+    <button type="submit"{{if .CreateBlocked}} disabled{{end}}>Kuzatuv yaratish</button>
   </form>
 </section>
 
@@ -31,8 +39,8 @@
     <thead><tr><th>Yo'nalish</th><th>Sana</th><th>Filtr</th><th>Tekshiruv</th><th>Joy</th><th></th></tr></thead>
     <tbody>
     {{range .Watches}}
-      <tr class="{{if not .Active}}off{{end}}">
-        <td class="full" data-label="Yo'nalish"><b>{{.RouteLabel}}</b>{{if not .Active}}<br><small>to'xtatilgan</small>{{end}}</td>
+      <tr class="{{if or .AdminDisabled (not .Active)}}off{{end}}">
+        <td class="full" data-label="Yo'nalish"><b>{{.RouteLabel}}</b>{{if .AdminDisabled}}<br><small>administrator to'xtatgan</small>{{else if not .Active}}<br><small>to'xtatilgan</small>{{end}}</td>
         <td data-label="Sana">{{.Date}}</td>
         <td data-label="Filtr">{{.Filter}}</td>
         <td class="full" data-label="Tekshiruv"><b>{{.Interval}}</b><br><small>oxirgi: {{.LastCheck}}</small>{{if .LastStatus}}<br><small>{{.LastStatus}}</small>{{end}}
@@ -40,8 +48,12 @@
         <td data-label="Joy">{{if .Matches}}<span class="badge ok">{{.Matches}} poyezd</span>{{else}}<span class="badge">yo'q</span>{{end}}</td>
         <td class="actions">
           <a href="{{.SearchURL}}"><button class="ghost" type="button">Ko'rish</button></a>
+          <a href="/watches/{{.ID}}/logs"><button class="ghost" type="button">Loglar</button></a>
+          <a href="/watches/{{.ID}}/edit"><button class="ghost" type="button">Tahrirlash</button></a>
+          {{if not .AdminDisabled}}
           <form method="post" action="/watches/{{.ID}}/check"><button class="ghost">Tekshir</button></form>
           <form method="post" action="/watches/{{.ID}}/toggle"><button class="ghost">{{if .Active}}To'xtat{{else}}Yoq{{end}}</button></form>
+          {{end}}
           <form method="post" action="/watches/{{.ID}}/delete" onsubmit="return confirm('O\'chirilsinmi?')"><button class="ghost danger">O'chir</button></form>
         </td>
       </tr>

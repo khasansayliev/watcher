@@ -78,8 +78,32 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 	return nil
 }
 
+// noFKMarker bilan boshlangan migratsiya tashqi kalitlar o'chirilgan holda bajariladi
+// (SQLite jadvalni qayta qurish tartibi: DROP TABLE ON DELETE CASCADE'ni ishga tushirmasligi uchun).
+// PRAGMA foreign_keys tranzaksiya ichida ishlamaydi, shuning uchun alohida ulanishda tranzaksiyadan oldin o'zgartiriladi.
+const noFKMarker = "-- migrate:no-fk"
+
 func applyOne(ctx context.Context, db *sql.DB, version, file string) error {
-	tx, err := db.BeginTx(ctx, nil)
+	body, err := migrationsFS.ReadFile(file)
+	if err != nil {
+		return err
+	}
+	noFK := strings.HasPrefix(string(body), noFKMarker)
+
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	if noFK {
+		if _, err := conn.ExecContext(ctx, `PRAGMA foreign_keys = OFF`); err != nil {
+			return err
+		}
+		defer conn.ExecContext(context.WithoutCancel(ctx), `PRAGMA foreign_keys = ON`)
+	}
+
+	tx, err := conn.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -92,12 +116,19 @@ func applyOne(ctx context.Context, db *sql.DB, version, file string) error {
 	if n > 0 {
 		return nil
 	}
-	body, err := migrationsFS.ReadFile(file)
-	if err != nil {
-		return err
-	}
 	if _, err := tx.ExecContext(ctx, string(body)); err != nil {
 		return err
+	}
+	if noFK {
+		rows, err := tx.QueryContext(ctx, `PRAGMA foreign_key_check`)
+		if err != nil {
+			return err
+		}
+		bad := rows.Next()
+		rows.Close()
+		if bad {
+			return fmt.Errorf("tashqi kalit buzilgan")
+		}
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO schema_migrations (version, applied_at) VALUES (?1, ?2)`,
 		version, time.Now().UnixMilli()); err != nil {
@@ -122,6 +153,10 @@ func fromMS(v sql.NullInt64) time.Time {
 		return time.Time{}
 	}
 	return time.UnixMilli(v.Int64)
+}
+
+func nullString(s string) sql.NullString {
+	return sql.NullString{String: s, Valid: s != ""}
 }
 
 func boolInt(b bool) int {

@@ -15,12 +15,7 @@ import (
 
 const (
 	sessionCookie = "watcher_session"
-	// loginCookie login sahifasi ochilganda qo'yiladi va callback'da talab qilinadi:
-	// boshqa birov tayyorlab yuborgan (o'zining imzolangan) havola bilan
-	// foydalanuvchini begona akkauntga kiritib qo'yishning (login CSRF) oldini oladi.
-	loginCookie   = "watcher_login"
-	callbackPath  = "/auth/telegram/callback"
-	loginStateAge = 10 * time.Minute
+	loginCookie   = "watcher_login" // brauzerga bog'langan kirish kodi (HttpOnly)
 )
 
 type ctxKey struct{}
@@ -57,65 +52,41 @@ func (s *Server) currentUser(r *http.Request) (domain.User, error) {
 	return s.d.Auth.Authenticate(r.Context(), c.Value)
 }
 
-// loginPage Telegram Login Widget'ni ko'rsatadi.
+// loginPage "Telegram orqali kirish" tugmasini ko'rsatadi.
 func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
 	if _, err := s.currentUser(r); err == nil {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-	nonce, err := usecase.RandomToken(16)
+	vm := loginVM{Error: r.URL.Query().Get("err")}
+	if link, err := s.d.Auth.BotURL("login"); err == nil { // t.me/<bot>?start=login
+		vm.CodeBotURL = link
+	}
+	s.render(w, "login.html", vm)
+}
+
+// loginStart yangi kirish so'rovi ochadi. Kod faqat shu brauzerning HttpOnly cookie'sida turadi:
+// havolani boshqa odam ochsa ham, sessiyani faqat kodni ochgan brauzer oladi.
+func (s *Server) loginStart(w http.ResponseWriter, r *http.Request) {
+	code, _, err := s.d.Auth.BeginLogin(r.Context())
 	if err != nil {
-		http.Error(w, "server xatosi", http.StatusInternalServerError)
+		var ve *domain.ValidationError
+		if errors.As(err, &ve) {
+			loginError(w, r, ve.Msg)
+			return
+		}
+		slog.Error("kirish so'rovi", "err", err)
+		loginError(w, r, "Kirishni boshlab bo'lmadi, keyinroq urinib ko'ring")
 		return
 	}
 	http.SetCookie(w, &http.Cookie{
-		Name: loginCookie, Value: nonce, Path: callbackPath,
-		MaxAge: int(loginStateAge.Seconds()), HttpOnly: true, Secure: s.d.SecureCookies, SameSite: http.SameSiteLaxMode,
+		Name: loginCookie, Value: code, Path: "/login",
+		MaxAge: 600, HttpOnly: true, Secure: s.d.SecureCookies, SameSite: http.SameSiteLaxMode,
 	})
-	s.render(w, "login.html", loginVM{
-		Error:       r.URL.Query().Get("err"),
-		BotUsername: s.d.BotUsername,
-		AuthURL:     s.d.BaseURL + callbackPath,
-	})
+	http.Redirect(w, r, "/login/wait", http.StatusSeeOther)
 }
 
-// telegramCallback — widget foydalanuvchi tasdiqlagach shu manzilga imzolangan maydonlar bilan yo'naltiradi:
-// ?id=...&first_name=...&username=...&photo_url=...&auth_date=...&hash=...
-func (s *Server) telegramCallback(w http.ResponseWriter, r *http.Request) {
-	if _, err := r.Cookie(loginCookie); err != nil {
-		loginError(w, r, "Kirish sessiyasi topilmadi — qaytadan urinib ko'ring")
-		return
-	}
-	http.SetCookie(w, &http.Cookie{Name: loginCookie, Value: "", Path: callbackPath, MaxAge: -1})
-
-	fields := map[string]string{}
-	for k, v := range r.URL.Query() {
-		if len(v) != 1 {
-			loginError(w, r, "Noto'g'ri so'rov")
-			return
-		}
-		fields[k] = v[0]
-	}
-
-	token, _, expires, err := s.d.Auth.Login(r.Context(), fields)
-	if err != nil {
-		var ve *domain.ValidationError
-		switch {
-		case errors.As(err, &ve):
-			loginError(w, r, ve.Msg)
-		case errors.Is(err, usecase.ErrBadSignature):
-			slog.Warn("telegram login: imzo noto'g'ri", "remote", r.RemoteAddr)
-			loginError(w, r, "Telegram ma'lumoti tasdiqlanmadi")
-		default:
-			slog.Error("telegram login", "err", err)
-			loginError(w, r, "Telegram orqali kirib bo'lmadi")
-		}
-		return
-	}
-	s.startSession(w, r, token, expires)
-}
-
-// codeLogin — Telegram'i yo'q qurilmada: botdan olingan bir martalik kod bilan kirish.
+// codeLogin — Telegram o'rnatilmagan qurilmada: botdan (boshqa qurilmada) olingan bir martalik kod bilan kirish.
 func (s *Server) codeLogin(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<10)
 	if err := r.ParseForm(); err != nil {
@@ -131,22 +102,64 @@ func (s *Server) codeLogin(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, usecase.ErrTooManyAttempts):
 			slog.Warn("kod bilan kirish: urinishlar chegarasi", "client", clientKey(r))
 			loginError(w, r, "Juda ko'p noto'g'ri urinish. Bir necha daqiqadan keyin qayta urinib ko'ring")
+		case errors.Is(err, domain.ErrForbidden):
+			loginError(w, r, "Akkauntingiz administrator tomonidan o'chirilgan")
 		default:
 			slog.Error("kod bilan kirish", "err", err)
 			loginError(w, r, "Kod bilan kirib bo'lmadi")
 		}
 		return
 	}
-	s.startSession(w, r, token, expires)
-}
-
-func (s *Server) startSession(w http.ResponseWriter, r *http.Request, token string, expires time.Time) {
 	http.SetCookie(w, &http.Cookie{
 		Name: sessionCookie, Value: token, Path: "/",
 		Expires: expires, MaxAge: int(time.Until(expires).Seconds()),
 		HttpOnly: true, Secure: s.d.SecureCookies, SameSite: http.SameSiteLaxMode,
 	})
 	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// loginWait kutish sahifasi: botda tasdiqlangunga qadar o'zini yangilab turadi,
+// tasdiqlangach sessiya cookie'sini beradi va bosh sahifaga o'tkazadi.
+func (s *Server) loginWait(w http.ResponseWriter, r *http.Request) {
+	c, err := r.Cookie(loginCookie)
+	if err != nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+	token, _, expires, err := s.d.Auth.PollLogin(r.Context(), c.Value)
+	switch {
+	case err == nil:
+		clearLoginCookie(w, s.d.SecureCookies)
+		http.SetCookie(w, &http.Cookie{
+			Name: sessionCookie, Value: token, Path: "/",
+			Expires: expires, MaxAge: int(time.Until(expires).Seconds()),
+			HttpOnly: true, Secure: s.d.SecureCookies, SameSite: http.SameSiteLaxMode,
+		})
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+	case errors.Is(err, usecase.ErrLoginPending):
+		link, lerr := s.d.Auth.BotURL(c.Value)
+		if lerr != nil {
+			slog.Error("bot havolasi", "err", lerr)
+			loginError(w, r, "Telegram bot bilan bog'lanib bo'lmadi")
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		s.render(w, "login_wait.html", loginWaitVM{BotURL: link})
+	case errors.Is(err, domain.ErrForbidden):
+		clearLoginCookie(w, s.d.SecureCookies)
+		loginError(w, r, "Akkauntingiz administrator tomonidan o'chirilgan")
+	case errors.Is(err, domain.ErrNotFound):
+		clearLoginCookie(w, s.d.SecureCookies)
+		loginError(w, r, "Kirish havolasi eskirdi, qaytadan urinib ko'ring")
+	default:
+		slog.Error("kirishni tekshirish", "err", err)
+		loginError(w, r, "Ichki xato yuz berdi")
+	}
+}
+
+func clearLoginCookie(w http.ResponseWriter, secure bool) {
+	http.SetCookie(w, &http.Cookie{Name: loginCookie, Value: "", Path: "/login", MaxAge: -1,
+		HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode})
 }
 
 // clientKey — urinishlarni cheklash uchun so'rov egasi. So'rov bevosita internetdan kelsa, bu uning manzili.

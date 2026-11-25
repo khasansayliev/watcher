@@ -1,0 +1,53 @@
+{{template "head" .}}
+<section class="card">
+  <h2>Loglar: {{.RouteLabel}}, {{.Date}}</h2>
+  <p class="hint">Filtr: {{.Filter}} · jami so'rovlar: <b>{{.Total}}</b>{{if .Total}} · ko'rsatilgan: {{.From}}–{{.To}}{{end}} · yangilari birinchi</p>
+  <p><a href="/"><button class="ghost" type="button">← Kuzatuvlar</button></a></p>
+</section>
+
+<section class="card">
+  {{if .Logs}}
+  <table class="stack">
+    <thead><tr><th>So'rov vaqti</th><th>Natija</th><th>Poyezd / mos</th><th>Xabar</th><th>Javob</th></tr></thead>
+    <tbody>
+    {{range .Logs}}
+      <tr>
+        <td class="full" data-label="So'rov vaqti"><b>{{.Time}}</b><br><small>{{if .Manual}}qo'lda{{else}}avtomatik{{end}} · {{.Duration}}</small></td>
+        <td data-label="Natija">{{if .OK}}<span class="badge ok">OK</span>{{else}}<span class="badge err">xato</span><br><small>{{.Error}}</small>{{end}}</td>
+        <td data-label="Poyezd / mos">{{if .OK}}{{.TrainCount}} ta / <b>{{.MatchCount}}</b> mos{{else}}—{{end}}</td>
+        <td data-label="Xabar">{{if .Notified}}<span class="badge ok">yuborildi</span>{{else if .NotifyErr}}<span class="badge err">xato</span><br><small>{{.NotifyErr}}</small>{{else}}<span class="none">—</span>{{end}}</td>
+        <td class="full" data-label="Javob">
+          {{if .Trains}}
+          <details>
+            <summary>{{len .Trains}} ta poyezd</summary>
+            {{range .Trains}}
+            <div><b>{{.Number}}</b> {{.Label}} · {{.Departure}} → {{.Arrival}}{{if .Matched}} <span class="badge ok">mos</span>{{end}}
+              <ul class="cars">
+                {{range .Cars}}<li>{{.Label}}: {{if .FreeSeats}}<span class="seats">{{.FreeSeats}} joy</span>{{else}}<span class="none">joy yo'q</span>{{end}}{{if .Price}} · {{.Price}}{{end}}</li>{{end}}
+              </ul>
+            </div>
+            {{end}}
+          </details>
+          {{else}}<span class="none">—</span>{{end}}
+        </td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+
+  {{if gt .Pages 1}}
+  <nav class="pager" aria-label="Sahifalar">
+    {{if .Prev}}<a href="?page={{.Prev}}">‹ Oldingi</a>{{else}}<span class="dis">‹ Oldingi</span>{{end}}
+    {{range .Links}}
+      {{if .Gap}}<span class="dis">…</span>
+      {{else if .Current}}<span class="cur">{{.N}}</span>
+      {{else}}<a href="?page={{.N}}">{{.N}}</a>{{end}}
+    {{end}}
+    {{if .Next}}<a href="?page={{.Next}}">Keyingi ›</a>{{else}}<span class="dis">Keyingi ›</span>{{end}}
+  </nav>
+  {{end}}
+  {{else}}
+  <p class="none">Hali so'rov yuborilmagan. Birinchi tekshiruv bir necha soniyada boshlanadi.</p>
+  {{end}}
+</section>
+{{template "foot" .}}

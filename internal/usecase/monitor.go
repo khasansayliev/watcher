@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/khasansayliev/watcher/internal/domain"
+	"github.com/khasansayliev/watcher/internal/pkg/textfmt"
 )
 
 // minBackoff — xato (429, 5xx, tarmoq) dan keyingi eng qisqa pauza.
@@ -35,8 +36,10 @@ type MonitorConfig struct {
 // Har bir yo'nalish jo'nashgacha qolgan kunga qarab jadvaldagi oraliqda tekshiriladi.
 type Monitor struct {
 	repo     WatchRepository
+	logs     CheckLogRepository
 	policies PollingRuleRepository
 	users    UserRepository
+	gate     CreationGate
 	searcher TrainSearcher
 	notifier Notifier
 	clock    Clock
@@ -51,14 +54,14 @@ type Monitor struct {
 	pausedUntil time.Time
 }
 
-func NewMonitor(repo WatchRepository, policies PollingRuleRepository, users UserRepository, s TrainSearcher, n Notifier, c Clock, cfg MonitorConfig, log *slog.Logger) *Monitor {
+func NewMonitor(repo WatchRepository, logs CheckLogRepository, policies PollingRuleRepository, users UserRepository, gate CreationGate, s TrainSearcher, n Notifier, c Clock, cfg MonitorConfig, log *slog.Logger) *Monitor {
 	if cfg.MaxBackoff == 0 {
 		cfg.MaxBackoff = 30 * time.Minute
 	}
 	if cfg.Tick == 0 {
 		cfg.Tick = domain.MinCheckInterval
 	}
-	return &Monitor{repo: repo, policies: policies, users: users, searcher: s, notifier: n, clock: c, cfg: cfg, log: log, trigger: make(chan int64, 64)}
+	return &Monitor{repo: repo, logs: logs, policies: policies, users: users, gate: gate, searcher: s, notifier: n, clock: c, cfg: cfg, log: log, trigger: make(chan int64, 64)}
 }
 
 func (m *Monitor) PausedUntil() time.Time {
@@ -112,7 +115,7 @@ func (m *Monitor) RunCycle(ctx context.Context, onlyID int64) {
 		if err != nil {
 			return
 		}
-		if w.Active {
+		if w.Runnable() {
 			watches = []domain.Watch{w}
 		}
 	} else {
@@ -123,6 +126,7 @@ func (m *Monitor) RunCycle(ctx context.Context, onlyID int64) {
 		}
 	}
 
+	watches = m.permitted(ctx, watches)
 	groups := m.group(ctx, watches)
 	if onlyID == 0 {
 		groups = m.due(ctx, groups)
@@ -137,21 +141,85 @@ func (m *Monitor) RunCycle(ctx context.Context, onlyID int64) {
 		if i > 0 && !sleepCtx(ctx, m.cfg.GroupPause) {
 			return
 		}
+		sent := m.clock.Now()
 		trains, err := m.searcher.Search(ctx, g.route)
 		now := m.clock.Now()
+		manual := onlyID != 0
 		if err != nil {
 			d := m.fail(err)
 			m.log.Warn("qidiruv xatosi", "route", g.route.Key(), "err", err, "pause", d.Round(time.Second))
 			for _, w := range g.watches {
-				_, _ = m.repo.Update(ctx, w.ID, func(x *domain.Watch) { x.RecordFailure(now, err) })
+				_, _ = m.repo.Update(ctx, w.ID, func(x *domain.Watch) {
+					if sameTarget(*x, w) {
+						x.RecordFailure(now, err)
+					}
+				})
+				m.record(ctx, domain.CheckLog{
+					WatchID: w.ID, ReqTime: sent, Duration: now.Sub(sent), Manual: manual,
+					Error: textfmt.Truncate(err.Error(), 300),
+				})
 			}
 			return // qolganlari keyingi siklda — saytni qiynamaymiz
 		}
 		m.succeed()
 		for _, w := range g.watches {
-			m.evaluate(ctx, w, trains, now, chats)
+			res := m.evaluate(ctx, w, trains, now, chats)
+			if res.stale {
+				continue
+			}
+			l := domain.CheckLog{
+				WatchID: w.ID, ReqTime: sent, Duration: now.Sub(sent), Manual: manual, OK: true,
+				TrainCount: len(trains), MatchCount: len(res.matches), Notified: res.notified && res.notifyErr == nil,
+				Trains: domain.SnapshotTrains(trains, res.matches),
+			}
+			if res.notifyErr != nil {
+				l.NotifyErr = textfmt.Truncate(res.notifyErr.Error(), 300)
+			}
+			m.record(ctx, l)
 		}
 	}
+}
+
+// noPermissionStatus — ruxsati yo'q foydalanuvchi kuzatuvining holati.
+const noPermissionStatus = "Ruxsat yo'q — administrator ruxsat bermaguncha tekshirilmaydi"
+
+// permitted faqat egasi hozir kuzatuv yuritishga ruxsatli (CreationGate) bo'lgan kuzatuvlarni qoldiradi:
+// ruxsati olingan foydalanuvchining mavjud kuzatuvlari ham tekshirilmaydi va xabar yubormaydi.
+// Ruxsat qaytsa, kuzatuv davom etadi va birinchi topilma haqida yangidan xabar beriladi.
+func (m *Monitor) permitted(ctx context.Context, watches []domain.Watch) []domain.Watch {
+	allowed := map[int64]bool{}
+	out := watches[:0:0]
+	for _, w := range watches {
+		ok, seen := allowed[w.UserID]
+		if !seen {
+			u, err := m.users.Get(ctx, w.UserID)
+			switch {
+			case err != nil:
+				ok = false // egasini aniqlab bo'lmadi — bu siklda o'tkazib yuboramiz
+			default:
+				gerr := m.gate.CanCreate(ctx, u)
+				var ve *domain.ValidationError
+				ok = gerr == nil
+				if gerr != nil && !errors.As(gerr, &ve) {
+					m.log.Warn("ruxsatni tekshirib bo'lmadi", "user", w.UserID, "err", gerr)
+					allowed[w.UserID] = false
+					continue
+				}
+			}
+			allowed[w.UserID] = ok
+		}
+		if ok {
+			out = append(out, w)
+			continue
+		}
+		if w.LastStatus != noPermissionStatus { // har siklda yozmaymiz
+			_, _ = m.repo.Update(ctx, w.ID, func(x *domain.Watch) {
+				x.LastStatus = noPermissionStatus
+				x.LastSig = ""
+			})
+		}
+	}
+	return out
 }
 
 // group muddati o'tganlarini to'xtatadi va qolganlarini yo'nalish bo'yicha guruhlaydi.
@@ -182,7 +250,9 @@ func (m *Monitor) group(ctx context.Context, watches []domain.Watch) []routeGrou
 	return out
 }
 
-// due faqat oralig'i o'tgan yo'nalishlarni qoldiradi.
+// due faqat vaqti kelgan kuzatuvlarni qoldiradi. Har bir kuzatuv o'z oralig'ida tekshiriladi:
+// admin belgilagani yoki jadvaldagisi. Yo'nalishda vaqti kelgani bo'lsa, saytga bitta so'rov yuboriladi
+// va faqat vaqti kelgan kuzatuvlar baholanadi (boshqalarining oralig'i buzilmaydi).
 func (m *Monitor) due(ctx context.Context, groups []routeGroup) []routeGroup {
 	policy, err := m.policies.Get(ctx)
 	if err != nil {
@@ -192,26 +262,60 @@ func (m *Monitor) due(ctx context.Context, groups []routeGroup) []routeGroup {
 	now, today := m.clock.Now(), m.clock.Today()
 	out := groups[:0]
 	for _, g := range groups {
-		if g.lastCheck.IsZero() || now.Sub(g.lastCheck)+dueSlack >= policy.IntervalFor(g.route.Date, today) {
+		var dueWatches []domain.Watch
+		var oldest time.Time
+		first := true
+		for _, w := range g.watches {
+			if w.LastCheck.IsZero() || now.Sub(w.LastCheck)+dueSlack >= w.IntervalIn(policy, today) {
+				dueWatches = append(dueWatches, w)
+				if first || w.LastCheck.Before(oldest) { // hali tekshirilmagan (nol vaqt) birinchi turadi
+					oldest, first = w.LastCheck, false
+				}
+			}
+		}
+		if len(dueWatches) > 0 {
+			g.watches, g.lastCheck = dueWatches, oldest
 			out = append(out, g)
 		}
 	}
 	return out
 }
 
-func (m *Monitor) evaluate(ctx context.Context, w domain.Watch, trains []domain.Train, now time.Time, chats map[int64]string) {
+// sameTarget kuzatuv so'rov yuborilgandan beri yo'nalish yoki shartlari o'zgarmaganini tekshiradi.
+func sameTarget(a, b domain.Watch) bool { return a.Route == b.Route && a.Filter == b.Filter }
+
+// record logni yozadi; log yozilmasa ham tekshiruv davom etadi.
+func (m *Monitor) record(ctx context.Context, l domain.CheckLog) {
+	if err := m.logs.Add(ctx, l); err != nil {
+		m.log.Warn("tekshiruv logini yozib bo'lmadi", "watch", l.WatchID, "err", err)
+	}
+}
+
+// evalResult — bitta kuzatuvni baholash natijasi (logga yoziladi).
+type evalResult struct {
+	matches   []domain.Match
+	notified  bool // xabar yuborishga urinildi
+	notifyErr error
+	stale     bool // so'rov paytida kuzatuv tahrirlangan: natija eskirgan, yozilmaydi va xabar yuborilmaydi
+}
+
+func (m *Monitor) evaluate(ctx context.Context, w domain.Watch, trains []domain.Train, now time.Time, chats map[int64]string) evalResult {
 	matches, notify, sig := w.Evaluate(trains)
 	var nerr error
 	if notify {
+		// Xabar yuborishdan oldin kuzatuv hali o'zgarmaganini tekshiramiz (so'rov paytida tahrirlanishi mumkin).
+		if cur, err := m.repo.Get(ctx, w.ID); err != nil || !sameTarget(cur, w) {
+			return evalResult{stale: true}
+		}
 		chat, ok := chats[w.UserID]
 		if !ok {
 			if u, err := m.users.Get(ctx, w.UserID); err == nil {
-				chat = u.ChatID()
+				chat = u.TelegramChatID
 			}
 			chats[w.UserID] = chat
 		}
 		if chat == "" {
-			nerr = errors.New("foydalanuvchi topilmadi")
+			nerr = errors.New("Telegram ulanmagan")
 		} else {
 			nerr = m.notifier.NotifyAvailability(ctx, chat, w.Route, matches)
 		}
@@ -219,9 +323,17 @@ func (m *Monitor) evaluate(ctx context.Context, w domain.Watch, trains []domain.
 			m.log.Warn("xabar yuborilmadi", "watch", w.ID, "user", w.UserID, "err", nerr)
 		}
 	}
-	_, _ = m.repo.Update(ctx, w.ID, func(x *domain.Watch) {
-		x.RecordResult(now, len(trains), matches, sig, notify, nerr)
+	applied := false
+	_, err := m.repo.Update(ctx, w.ID, func(x *domain.Watch) {
+		if sameTarget(*x, w) { // so'rov yuborilgandan keyin tahrirlangan bo'lsa, eski natija yozilmaydi
+			x.RecordResult(now, len(trains), matches, sig, notify, nerr)
+			applied = true
+		}
 	})
+	if err == nil && !applied {
+		return evalResult{stale: true}
+	}
+	return evalResult{matches: matches, notified: notify, notifyErr: nerr}
 }
 
 func (m *Monitor) fail(err error) time.Duration {

@@ -20,7 +20,9 @@ var templatesFS embed.FS
 // ---- Delivery qatlami kutadigan kirish portlari ----
 
 type AuthUseCase interface {
-	Login(ctx context.Context, fields map[string]string) (token string, user domain.User, expires time.Time, err error)
+	BeginLogin(ctx context.Context) (code, botURL string, err error)
+	BotURL(code string) (string, error)
+	PollLogin(ctx context.Context, code string) (token string, user domain.User, expires time.Time, err error)
 	LoginWithCode(ctx context.Context, code, clientKey string) (token string, user domain.User, expires time.Time, err error)
 	Authenticate(ctx context.Context, token string) (domain.User, error)
 	Logout(ctx context.Context, token string) error
@@ -32,6 +34,10 @@ type WatchUseCase interface {
 	Delete(ctx context.Context, userID, id int64) error
 	Toggle(ctx context.Context, userID, id int64) (domain.Watch, error)
 	RequestCheck(ctx context.Context, userID, id int64) error
+	Logs(ctx context.Context, userID, id int64, page int) (usecase.LogPage, error)
+	Get(ctx context.Context, userID, id int64) (domain.Watch, error)
+	Edit(ctx context.Context, userID, id int64, in usecase.CreateWatchInput) (domain.Watch, error)
+	CanCreate(ctx context.Context, userID int64) error
 }
 
 type SearchUseCase interface {
@@ -48,6 +54,16 @@ type PollingUseCase interface {
 	Stats(ctx context.Context, actor domain.User) ([]usecase.TierStats, error)
 }
 
+type AdminUseCase interface {
+	Users(ctx context.Context, actor domain.User, page int) (usecase.UserPage, error)
+	SetCanCreate(ctx context.Context, actor domain.User, userID int64, allow bool) error
+	SetUserDisabled(ctx context.Context, actor domain.User, userID int64, disabled bool) error
+	Watches(ctx context.Context, actor domain.User, userID int64, page int) (usecase.AdminWatchPage, error)
+	SetWatchDisabled(ctx context.Context, actor domain.User, watchID int64, disabled bool) error
+	SetWatchInterval(ctx context.Context, actor domain.User, watchID int64, every time.Duration) error
+	SetCreationMode(ctx context.Context, actor domain.User, m domain.CreationMode) error
+}
+
 type MonitorStatus interface {
 	PausedUntil() time.Time
 }
@@ -62,15 +78,15 @@ type Deps struct {
 	Search        SearchUseCase
 	Telegram      TelegramUseCase
 	Polling       PollingUseCase
+	Admin         AdminUseCase
 	Status        MonitorStatus
 	Raw           RawResponseSource
 	Stations      usecase.StationDirectory
 	Clock         usecase.Clock
-	BaseURL       string // tashqi manzil: widget callback'i shundan yasaladi
-	BotUsername   string // widget uchun bot nomi (@siz)
+	TelegramOK    bool
 	MaxWatches    int
-	AdminIDs      []int64 // administratorlarning Telegram ID'lari
-	SecureCookies bool    // BASE_URL https bo'lsa true
+	AdminIDs      []string // Telegram ID'lar
+	SecureCookies bool     // BASE_URL https bo'lsa true
 }
 
 type Server struct {
@@ -93,20 +109,31 @@ func (s *Server) Handler() http.Handler {
 	// ochiq
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
 	mux.HandleFunc("GET /login", s.loginPage)
-	mux.HandleFunc("GET "+callbackPath, s.telegramCallback)
+	mux.HandleFunc("POST /login/telegram", s.loginStart)
+	mux.HandleFunc("GET /login/wait", s.loginWait)
 	mux.HandleFunc("POST /login/code", s.codeLogin)
 	mux.HandleFunc("POST /logout", s.logout)
 
 	// faqat kirganlar uchun
 	mux.Handle("GET /{$}", s.auth(s.dashboard))
 	mux.Handle("POST /watches", s.auth(s.createWatch))
+	mux.Handle("GET /watches/{id}/edit", s.auth(s.editWatchPage))
+	mux.Handle("POST /watches/{id}/edit", s.auth(s.editWatch))
 	mux.Handle("POST /watches/{id}/delete", s.auth(s.deleteWatch))
 	mux.Handle("POST /watches/{id}/toggle", s.auth(s.toggleWatch))
 	mux.Handle("POST /watches/{id}/check", s.auth(s.checkWatch))
+	mux.Handle("GET /watches/{id}/logs", s.auth(s.watchLogs))
 	mux.Handle("GET /search", s.auth(s.search))
 	mux.Handle("GET /settings", s.auth(s.settings))
 	mux.Handle("POST /settings/telegram/test", s.auth(s.telegramTest))
 	mux.Handle("GET /debug/last-response", s.auth(s.lastResponse))
+	mux.Handle("GET /admin/users", s.auth(s.adminUsers))
+	mux.Handle("POST /admin/users/{id}/creation", s.auth(s.adminUserCreation))
+	mux.Handle("POST /admin/users/{id}/disabled", s.auth(s.adminUserDisabled))
+	mux.Handle("POST /admin/settings/creation", s.auth(s.adminCreationMode))
+	mux.Handle("GET /admin/watches", s.auth(s.adminWatches))
+	mux.Handle("POST /admin/watches/{id}/disabled", s.auth(s.adminWatchDisabled))
+	mux.Handle("POST /admin/watches/{id}/interval", s.auth(s.adminWatchInterval))
 	mux.Handle("GET /admin/polling", s.auth(s.adminPolling))
 	mux.Handle("POST /admin/polling", s.auth(s.adminPollingSave))
 
@@ -135,10 +162,9 @@ func securityHeaders(next http.Handler) http.Handler {
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "same-origin")
-		// Telegram Login Widget skripti va oynasi; boshqa hech qanday tashqi manbaga ruxsat yo'q.
-		h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' https://telegram.org; "+
-			"frame-src https://oauth.telegram.org; img-src 'self' data: https://t.me https://*.telegram.org https://cdn4.telegram-cdn.org https://*.telegram-cdn.org; "+
-			"style-src 'self' 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'")
+		// Tashqi manbalarga ruxsat yo'q. 'unsafe-inline' faqat o'chirishni tasdiqlovchi inline onsubmit uchun.
+		h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "+
+			"img-src 'self' data:; form-action 'self'; frame-ancestors 'none'")
 		next.ServeHTTP(w, r)
 	})
 }

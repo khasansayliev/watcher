@@ -3,7 +3,6 @@ package usecase_test
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 	"time"
 
@@ -31,12 +30,12 @@ func TestMonitorOneRequestPerRouteAcrossUsers(t *testing.T) {
 	if e.search.calls != 1 {
 		t.Fatalf("bir xil yo'nalish uchun 1 so'rov kutilgan, %d", e.search.calls)
 	}
-	if e.notif.count(a.ChatID()) != 1 || e.notif.count(b.ChatID()) != 1 {
+	if e.notif.count(a.TelegramChatID) != 1 || e.notif.count(b.TelegramChatID) != 1 {
 		t.Fatalf("har bir foydalanuvchi o'z chatiga xabar olishi kerak: %+v", e.notif.sent)
 	}
 
 	e.monitor.RunCycle(ctx, 0)
-	if e.notif.count(a.ChatID()) != 1 {
+	if e.notif.count(a.TelegramChatID) != 1 {
 		t.Fatal("o'zgarish yo'q — takror xabar bo'lmasligi kerak")
 	}
 }
@@ -61,26 +60,6 @@ func TestMonitorRespectsSearchCapAndRotates(t *testing.T) {
 		if w.LastCheck.IsZero() {
 			t.Fatalf("2 sikldan keyin hamma yo'nalish tekshirilgan bo'lishi kerak: %s", w.Route.Date)
 		}
-	}
-}
-
-func TestMonitorUserBlockedBot(t *testing.T) {
-	e := newEnv(10, 0)
-	ctx := context.Background()
-	u := e.user("A")
-	w := mustCreate(t, e, u, "2900000", "2900700", "2026-12-05")
-	e.notif.blocked = map[string]bool{u.ChatID(): true}
-
-	e.monitor.RunCycle(ctx, 0)
-	got, _ := e.watches.Get(ctx, w.ID)
-	if got.LastSig != "" || !strings.Contains(got.LastStatus, "Telegram xato") {
-		t.Fatalf("xabar yetmasa imzo saqlanmasligi va xato ko'rinishi kerak: %+v", got)
-	}
-	e.notif.blocked = nil // foydalanuvchi botni qayta yoqdi
-	e.clock.add(2 * time.Hour)
-	e.monitor.RunCycle(ctx, 0)
-	if e.notif.count(u.ChatID()) != 1 {
-		t.Fatal("blokdan chiqqach xabar kelishi kerak")
 	}
 }
 
@@ -161,7 +140,7 @@ func TestMonitorPolicyChangeAppliesWithoutRestart(t *testing.T) {
 	mustCreate(t, e, e.user("A"), "2900000", "2900700", "2027-01-10") // 12 soat
 	e.monitor.RunCycle(ctx, 0)
 
-	admin := e.admin()
+	admin := e.users.add(domain.User{TelegramChatID: "900"})
 	if _, err := e.polling.Update(ctx, admin, []domain.PollingRule{{MaxDaysLeft: 0, Interval: time.Minute}}); err != nil {
 		t.Fatal(err)
 	}

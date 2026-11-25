@@ -12,11 +12,11 @@ type PollingService struct {
 	repo    PollingRuleRepository
 	watches WatchRepository
 	clock   Clock
-	admins  []int64
+	admins  []string
 }
 
-func NewPollingService(repo PollingRuleRepository, watches WatchRepository, c Clock, adminTelegramIDs []int64) *PollingService {
-	return &PollingService{repo: repo, watches: watches, clock: c, admins: adminTelegramIDs}
+func NewPollingService(repo PollingRuleRepository, watches WatchRepository, c Clock, adminIDs []string) *PollingService {
+	return &PollingService{repo: repo, watches: watches, clock: c, admins: adminIDs}
 }
 
 // Policy — joriy jadval (hamma foydalanuvchi o'qiy oladi: o'z kuzatuvining oralig'ini ko'rish uchun).
@@ -35,9 +35,6 @@ func (s *PollingService) Update(ctx context.Context, actor domain.User, rules []
 	}
 	p.UpdatedAt = s.clock.Now()
 	p.UpdatedBy = actor.DisplayName()
-	if h := actor.Handle(); h != "" && h != p.UpdatedBy {
-		p.UpdatedBy += " (" + h + ")"
-	}
 	if err := s.repo.Save(ctx, p); err != nil {
 		return domain.PollingPolicy{}, err
 	}
@@ -46,6 +43,7 @@ func (s *PollingService) Update(ctx context.Context, actor domain.User, rules []
 
 // TierStats — bitta bosqich bo'yicha yuklama.
 type TierStats struct {
+	Custom          bool // admin kuzatuvlarga alohida belgilagan oraliqlar (jadvaldan tashqari)
 	Rule            domain.PollingRule
 	Routes          int     // faol yo'nalish+sana juftliklari
 	Watches         int     // faol kuzatuvlar
@@ -77,8 +75,17 @@ func TierLoad(p domain.PollingPolicy, active []domain.Watch, today string) []Tie
 		idx[r.MaxDaysLeft] = i
 	}
 	routes := map[string]bool{}
+	custom := TierStats{Custom: true}
+	customRoutes := map[string]time.Duration{} // yo'nalish -> eng qisqa alohida oraliq
 	for _, w := range active {
 		if w.IsExpired(today) {
+			continue
+		}
+		if w.CheckEvery > 0 { // jadvaldan tashqari: yuklamasi o'z oralig'i bilan hisoblanadi
+			custom.Watches++
+			if d, ok := customRoutes[w.Route.Key()]; !ok || w.CheckEvery < d {
+				customRoutes[w.Route.Key()] = w.CheckEvery
+			}
 			continue
 		}
 		i := idx[p.RuleFor(domain.DaysLeft(w.Route.Date, today)).MaxDaysLeft]
@@ -90,6 +97,13 @@ func TierLoad(p domain.PollingPolicy, active []domain.Watch, today string) []Tie
 	}
 	for i := range out {
 		out[i].RequestsPerHour = float64(out[i].Routes) * float64(time.Hour) / float64(out[i].Rule.Interval)
+	}
+	if custom.Watches > 0 {
+		custom.Routes = len(customRoutes)
+		for _, d := range customRoutes {
+			custom.RequestsPerHour += float64(time.Hour) / float64(d)
+		}
+		out = append(out, custom)
 	}
 	return out
 }

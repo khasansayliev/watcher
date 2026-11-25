@@ -9,7 +9,8 @@ import (
 type Filter struct {
 	MaxPrice float64
 	MinSeats int
-	CarType  string // poyezd/vagon turi yoki klass bo'yicha qism-satr
+	CarType  string     // poyezd/vagon turi yoki klass bo'yicha qism-satr
+	Window   TimeWindow // kun ichida jo'nash vaqti oralig'i
 }
 
 // Match — shartga mos vagonlari bor poyezd.
@@ -28,6 +29,9 @@ func MatchTrains(f Filter, trains []Train) []Match {
 
 	var out []Match
 	for _, t := range trains {
+		if !f.Window.Contains(t.Departure) {
+			continue
+		}
 		var cars []Car
 		for _, c := range t.Cars {
 			if c.FreeSeats < minSeats {

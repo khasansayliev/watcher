@@ -5,7 +5,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -57,9 +56,12 @@ func run(log *slog.Logger) error {
 	}
 	users := sqlite.NewUsers(db)
 	sessions := sqlite.NewSessions(db)
+	logins := sqlite.NewLoginRequests(db)
 	loginCodes := sqlite.NewLoginCodes(db)
 	watchRepo := sqlite.NewWatches(db)
+	checkLogs := sqlite.NewCheckLogs(db)
 	pollingRepo := sqlite.NewPollingRules(db)
+	settingsRepo := sqlite.NewSettings(db)
 
 	clk := clock.New(cfg.TimeZone)
 	dir, err := stations.Load(cfg.StationsFile)
@@ -75,25 +77,19 @@ func run(log *slog.Logger) error {
 	})
 	tgClient := telegram.NewClient(cfg.TelegramToken)
 	notifier := telegram.NewNotifier(tgClient, rail.BuyURL(), dir)
-	verifier := telegram.NewLoginVerifier(cfg.TelegramToken)
-	botCtx, cancelMe := context.WithTimeout(ctx, 15*time.Second)
-	botUsername, err := tgClient.Username(botCtx) // Login Widget bot nomini talab qiladi
-	cancelMe()
-	if err != nil {
-		return fmt.Errorf("telegram bot (getMe): %w — TELEGRAM_BOT_TOKEN to'g'rimi?", err)
-	}
 
 	// --- usecase'lar ---
-	monitor := usecase.NewMonitor(watchRepo, pollingRepo, users, rail, notifier, clk, usecase.MonitorConfig{
+	admin := usecase.NewAdminService(users, watchRepo, settingsRepo, sessions, cfg.AdminTelegramIDs)
+	monitor := usecase.NewMonitor(watchRepo, checkLogs, pollingRepo, users, admin, rail, notifier, clk, usecase.MonitorConfig{
 		Tick:                10 * time.Second,
 		MaxBackoff:          30 * time.Minute,
 		GroupPause:          2 * time.Second,
 		MaxSearchesPerCycle: cfg.MaxSearchesPerCycle,
 	}, log)
-	auth := usecase.NewAuthService(verifier, users, sessions, loginCodes, clk, cfg.SessionTTL)
-	watches := usecase.NewWatchService(watchRepo, users, clk, monitor, cfg.MaxWatchesPerUser)
+	auth := usecase.NewAuthService(users, logins, sessions, loginCodes, notifier, clk, cfg.SessionTTL).WithSiteURL(cfg.BaseURL)
+	watches := usecase.NewWatchService(watchRepo, checkLogs, users, clk, monitor, admin, cfg.MaxWatchesPerUser)
 	search := usecase.NewSearchService(rail, monitor, clk, 10*time.Second, 2*time.Second)
-	tgService := usecase.NewTelegramService(users, notifier, auth, cfg.BaseURL)
+	tgService := usecase.NewTelegramService(users, notifier)
 	polling := usecase.NewPollingService(pollingRepo, watchRepo, clk, cfg.AdminTelegramIDs)
 
 	// --- delivery ---
@@ -103,12 +99,12 @@ func run(log *slog.Logger) error {
 		Search:        search,
 		Telegram:      tgService,
 		Polling:       polling,
+		Admin:         admin,
 		Status:        monitor,
 		Raw:           rail,
 		Stations:      dir,
 		Clock:         clk,
-		BaseURL:       cfg.BaseURL,
-		BotUsername:   botUsername,
+		TelegramOK:    notifier.Enabled(),
 		MaxWatches:    cfg.MaxWatchesPerUser,
 		AdminIDs:      cfg.AdminTelegramIDs,
 		SecureCookies: cfg.SecureCookies(),
@@ -116,11 +112,11 @@ func run(log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	bot := telegrambot.New(tgClient, tgService, log)
+	bot := telegrambot.New(tgClient, auth, log)
 
 	go monitor.Run(ctx)
 	go bot.Run(ctx)
-	go cleanupLoop(ctx, auth, log)
+	go cleanupLoop(ctx, auth, watches, cfg.LogRetention, log)
 
 	srv := &http.Server{Addr: cfg.Listen, Handler: ui.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
@@ -130,7 +126,7 @@ func run(log *slog.Logger) error {
 		_ = srv.Shutdown(shCtx)
 	}()
 
-	log.Info("ishga tushdi", "listen", cfg.Listen, "base_url", cfg.BaseURL, "bot", "@"+botUsername, "db", cfg.DatabasePath)
+	log.Info("ishga tushdi", "listen", cfg.Listen, "base_url", cfg.BaseURL, "db", cfg.DatabasePath)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
@@ -138,7 +134,7 @@ func run(log *slog.Logger) error {
 	return nil
 }
 
-func cleanupLoop(ctx context.Context, auth *usecase.AuthService, log *slog.Logger) {
+func cleanupLoop(ctx context.Context, auth *usecase.AuthService, watches *usecase.WatchService, logRetention time.Duration, log *slog.Logger) {
 	t := time.NewTicker(time.Hour)
 	defer t.Stop()
 	for {
@@ -150,6 +146,13 @@ func cleanupLoop(ctx context.Context, auth *usecase.AuthService, log *slog.Logge
 				log.Warn("sessiyalarni tozalash", "err", err)
 			} else if n > 0 {
 				log.Info("eskirgan sessiyalar o'chirildi", "count", n)
+			}
+			if logRetention > 0 {
+				if n, err := watches.PruneLogs(ctx, logRetention); err != nil {
+					log.Warn("eski loglarni tozalash", "err", err)
+				} else if n > 0 {
+					log.Info("eski tekshiruv loglari o'chirildi", "count", n)
+				}
 			}
 		}
 	}

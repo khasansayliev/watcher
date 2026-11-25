@@ -91,16 +91,13 @@ func (c *Client) SendMessage(ctx context.Context, chatID, text string, html bool
 	return c.call(ctx, "sendMessage", p, nil)
 }
 
-// Update — botga kelgan matnli xabar (bizga faqat shu kerak). Faqat shaxsiy chatlar:
-// bunda chat ID'si yuboruvchining Telegram ID'siga teng.
+// Update — botga kelgan matnli xabar (bizga faqat shu kerak).
 type Update struct {
-	ID        int64
-	ChatID    string
-	Text      string
-	FromID    int64 // yuboruvchi Telegram ID'si (Telegram tasdiqlagan)
-	FirstName string
-	LastName  string
-	Username  string
+	ID       int64
+	ChatID   string // shaxsiy chatda Telegram user ID bilan bir xil
+	Username string
+	Name     string
+	Text     string
 }
 
 // GetUpdates long polling: offset'dan keyingi yangilanishlarni kutadi.
@@ -111,9 +108,9 @@ func (c *Client) GetUpdates(ctx context.Context, offset int64, timeout time.Dura
 			Text string `json:"text"`
 			From struct {
 				ID        int64  `json:"id"`
+				Username  string `json:"username"`
 				FirstName string `json:"first_name"`
 				LastName  string `json:"last_name"`
-				Username  string `json:"username"`
 			} `json:"from"`
 			Chat struct {
 				ID   int64  `json:"id"`
@@ -135,10 +132,8 @@ func (c *Client) GetUpdates(ctx context.Context, offset int64, timeout time.Dura
 		if u.Message != nil && u.Message.Chat.Type == "private" {
 			up.ChatID = strconv.FormatInt(u.Message.Chat.ID, 10)
 			up.Text = u.Message.Text
-			up.FromID = u.Message.From.ID
-			up.FirstName = u.Message.From.FirstName
-			up.LastName = u.Message.From.LastName
 			up.Username = u.Message.From.Username
+			up.Name = strings.TrimSpace(u.Message.From.FirstName + " " + u.Message.From.LastName)
 		}
 		out = append(out, up)
 	}

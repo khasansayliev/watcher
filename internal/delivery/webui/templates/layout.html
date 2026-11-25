@@ -30,6 +30,7 @@
   tr.off td { color:var(--muted); }
   small, .hint { color:var(--muted); font-size:12px; }
   .badge { display:inline-block; padding:2px 8px; border-radius:20px; font-size:12px; background:var(--line); color:var(--muted); }
+  .badge.err { background:#fdecea; color:#b3261e; font-weight:600; }
   .badge.ok { background:var(--okbg); color:var(--ok); font-weight:600; }
   .flash { padding:10px 14px; border-radius:8px; margin-bottom:16px; background:var(--okbg); color:var(--ok); }
   .flash.err { background:var(--errbg); color:var(--err); }
@@ -45,20 +46,30 @@
   footer { text-align:center; color:var(--muted); font-size:12px; padding:20px; }
   .login { width:calc(100% - 32px); max-width:400px; margin:8vh auto; text-align:center; }
   .login h1 { font-size:22px; margin:0 0 6px; }
+  .subnav { display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
+  .subnav a { padding:6px 12px; border:1px solid var(--line); border-radius:7px; text-decoration:none; color:var(--ink); font-size:14px; background:var(--card); }
+  .subnav a.on { background:#229ed9; color:#fff; border-color:#229ed9; }
+  .inline { display:inline; }
+  .pager { display:flex; flex-wrap:wrap; gap:6px; margin-top:14px; align-items:center; }
+  .pager a, .pager span { padding:5px 10px; border:1px solid var(--line, #d0d7de); border-radius:6px; text-decoration:none; font-size:13px; }
+  .pager .cur { background:#229ed9; color:#fff; border-color:#229ed9; }
+  .pager .dis { color:var(--muted); }
+  details summary { cursor:pointer; color:var(--muted); font-size:13px; }
+  .tgbtn { display:inline-flex; align-items:center; gap:10px; background:#229ed9; color:#fff; border:0; padding:11px 20px; border-radius:7px; text-decoration:none; font-weight:500; font-size:15px; cursor:pointer; }
+  .tgbtn:hover { background:#1b8dc4; }
   .or { display:flex; align-items:center; gap:12px; margin:26px 0 18px; color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.05em; }
   .or::before, .or::after { content:""; flex:1; height:1px; background:var(--line); }
   .steps { text-align:left; margin:10px 0 14px; padding-left:20px; font-size:14px; }
   .steps li { margin-bottom:6px; }
   .codeform { display:flex; gap:8px; justify-content:center; }
   .codeform input { width:11em; min-width:0; flex:1 1 9em; max-width:13em; text-align:center; font:600 18px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:.12em; text-transform:uppercase; }
-  .gbtn { display:inline-flex; align-items:center; gap:10px; background:#fff; color:#1f1f1f; border:1px solid #dadce0; padding:10px 18px; border-radius:7px; text-decoration:none; font-weight:500; }
-  .gbtn:hover { background:#f8f9fa; }
 
   /* ---- Planshet va telefon ---- */
   td[data-label]::before { content:attr(data-label); display:none; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin-bottom:1px; }
-  td, th, h2 { overflow-wrap:anywhere; }
+  .badge { white-space:nowrap; }
 
   @media (max-width: 860px) {
+    td, th, h2 { overflow-wrap:anywhere; }
     /* sarlavha: 1-qator logo + foydalanuvchi, 2-qator menyu */
     header { flex-wrap:wrap; gap:6px 12px; padding:10px 14px; }
     header .me { margin-left:auto; gap:8px; min-width:0; }
@@ -103,6 +114,28 @@
 </style>
 {{end}}
 
+{{define "adminnav"}}
+<nav class="subnav">
+  <a href="/admin/users"{{if eq .AdminTab "users"}} class="on"{{end}}>Foydalanuvchilar</a>
+  <a href="/admin/watches"{{if eq .AdminTab "watches"}} class="on"{{end}}>Kuzatuvlar</a>
+  <a href="/admin/polling"{{if eq .AdminTab "polling"}} class="on"{{end}}>Tekshiruv oraliqlari</a>
+</nav>
+{{end}}
+
+{{define "pager"}}
+{{if gt .Pages 1}}
+<nav class="pager" aria-label="Sahifalar">
+  {{if .PrevHref}}<a href="{{.PrevHref}}">‹ Oldingi</a>{{else}}<span class="dis">‹ Oldingi</span>{{end}}
+  {{range .Links}}
+    {{if .Gap}}<span class="dis">…</span>
+    {{else if .Current}}<span class="cur">{{.N}}</span>
+    {{else}}<a href="{{.Href}}">{{.N}}</a>{{end}}
+  {{end}}
+  {{if .NextHref}}<a href="{{.NextHref}}">Keyingi ›</a>{{else}}<span class="dis">Keyingi ›</span>{{end}}
+</nav>
+{{end}}
+{{end}}
+
 {{define "head"}}<!doctype html>
 <html lang="uz">
 <head>
@@ -116,10 +149,9 @@
   <a href="/" class="logo">🚆 Watcher</a>
   <nav>
     <a href="/">Kuzatuvlar</a><a href="/search">Qidiruv</a><a href="/settings">Sozlamalar</a>
-    {{if .User.IsAdmin}}<a href="/admin/polling">Admin</a>{{end}}
+    {{if .User.IsAdmin}}<a href="/admin/users">Admin</a>{{end}}
   </nav>
   <div class="me">
-    {{if .User.Avatar}}<img src="{{.User.Avatar}}" alt="" referrerpolicy="no-referrer">{{end}}
     <span>{{.User.Name}}</span>
     <form method="post" action="/logout"><button class="ghost">Chiqish</button></form>
   </div>

@@ -14,16 +14,25 @@ import (
 
 var codeRe = regexp.MustCompile(`[A-Z2-9]{4}-[A-Z2-9]{4}`)
 
-func tgIdent(id int64, username string) domain.Identity {
-	return domain.Identity{TelegramID: id, FirstName: "Ali", Username: username}
+func prof(id, username string) domain.TelegramProfile {
+	return domain.TelegramProfile{ID: id, Username: username, Name: "Ali"}
 }
 
-// issue — botga /login yozgan foydalanuvchi uchun kod oladi.
-func (e *env) issue(t *testing.T, id int64) string {
+// sendCode — botga /login yozgan foydalanuvchi: bot kodni chatga yuboradi, biz uni xabardan o'qiymiz.
+func (e *env) sendCode(t *testing.T, p domain.TelegramProfile) string {
 	t.Helper()
-	code, _, err := e.auth.IssueLoginCode(context.Background(), tgIdent(id, "ali"))
-	if err != nil {
+	before := e.notif.count(p.ID)
+	if err := e.auth.SendLoginCode(context.Background(), p); err != nil {
 		t.Fatal(err)
+	}
+	if e.notif.count(p.ID) != before+1 {
+		t.Fatal("bot kod yuborishi kerak edi")
+	}
+	e.notif.mu.Lock()
+	defer e.notif.mu.Unlock()
+	code := codeRe.FindString(e.notif.sent[len(e.notif.sent)-1].text)
+	if code == "" {
+		t.Fatalf("oxirgi xabarda kod yo'q: %q", e.notif.sent[len(e.notif.sent)-1].text)
 	}
 	return code
 }
@@ -31,23 +40,29 @@ func (e *env) issue(t *testing.T, id int64) string {
 func TestLoginWithCode(t *testing.T) {
 	e := newEnv(10, 0)
 	ctx := context.Background()
-	code := e.issue(t, 555)
+	code := e.sendCode(t, prof("555", "ali"))
 
-	if _, ok := e.codes.m[code]; ok {
+	plain, _ := domain.NormalizeLoginCode(code)
+	if _, ok := e.codes.m[plain]; ok {
 		t.Fatal("bazada kodning o'zi emas, xeshi saqlanishi kerak")
 	}
 
 	// Foydalanuvchi kodni qulay ko'rinishda (kichik harf, defis) kiritadi.
-	typed := strings.ToLower(domain.FormatLoginCode(code))
-	token, u, _, err := e.auth.LoginWithCode(ctx, typed, "1.2.3.4")
+	token, u, _, err := e.auth.LoginWithCode(ctx, strings.ToLower(code), "1.2.3.4")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if u.TelegramID != 555 || u.Username != "ali" {
+	if u.TelegramChatID != "555" || u.Username != "ali" {
 		t.Fatalf("user: %+v", u)
+	}
+	if u.CanCreate {
+		t.Fatal("yangi foydalanuvchi, tugma oqimidagi kabi, kuzatuv yaratish ruxsatisiz boshlashi kerak")
 	}
 	if got, err := e.auth.Authenticate(ctx, token); err != nil || got.ID != u.ID {
 		t.Fatalf("sessiya ishlamadi: %v", err)
+	}
+	if _, ok := e.sessions.m[token]; ok {
+		t.Fatal("bazada token emas, uning xeshi saqlanishi kerak")
 	}
 
 	// Kod bir marta ishlaydi.
@@ -56,26 +71,34 @@ func TestLoginWithCode(t *testing.T) {
 	}
 }
 
-func TestLoginCodeSameAccountAsWidget(t *testing.T) {
+func TestLoginCodeSameAccountAsButtonFlow(t *testing.T) {
 	e := newEnv(10, 0)
 	ctx := context.Background()
-	e.verifier.ident = domain.Identity{TelegramID: 555, FirstName: "Ali", Username: "ali", AuthDate: e.clock.Now()}
-	_, viaWidget, _, err := e.auth.Login(ctx, nil)
+	p := prof("555", "ali")
+
+	loginCode, _, err := e.auth.BeginLogin(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, viaCode, _, err := e.auth.LoginWithCode(ctx, e.issue(t, 555), "ip")
+	if err := e.auth.ConfirmLogin(ctx, loginCode, p); err != nil {
+		t.Fatal(err)
+	}
+	_, viaButton, _, err := e.auth.PollLogin(ctx, loginCode)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if viaWidget.ID != viaCode.ID {
-		t.Fatal("widget va kod bilan kirish bitta akkauntga olib kelishi kerak (kuzatuvlar saqlanadi)")
+	_, viaCode, _, err := e.auth.LoginWithCode(ctx, e.sendCode(t, p), "ip")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if viaButton.ID != viaCode.ID {
+		t.Fatal("tugma va kod bilan kirish bitta akkauntga olib kelishi kerak (kuzatuvlar saqlanadi)")
 	}
 }
 
 func TestLoginCodeExpiry(t *testing.T) {
 	e := newEnv(10, 0)
-	code := e.issue(t, 555)
+	code := e.sendCode(t, prof("555", "ali"))
 	e.clock.add(domain.LoginCodeTTL + time.Second)
 	_, _, _, err := e.auth.LoginWithCode(context.Background(), code, "ip")
 	var ve *domain.ValidationError
@@ -89,9 +112,10 @@ func TestLoginCodeExpiry(t *testing.T) {
 
 func TestNewCodeInvalidatesOld(t *testing.T) {
 	e := newEnv(10, 0)
-	old := e.issue(t, 555)
+	p := prof("555", "ali")
+	old := e.sendCode(t, p)
 	e.clock.add(domain.LoginCodeCooldown + time.Second)
-	fresh := e.issue(t, 555)
+	fresh := e.sendCode(t, p)
 	if old == fresh {
 		t.Fatal("kodlar farq qilishi kerak")
 	}
@@ -103,23 +127,33 @@ func TestNewCodeInvalidatesOld(t *testing.T) {
 	}
 }
 
-func TestIssueLoginCodeCooldown(t *testing.T) {
+func TestSendLoginCodeCooldownAndMessage(t *testing.T) {
 	e := newEnv(10, 0)
 	ctx := context.Background()
-	e.issue(t, 555)
-	var ve *domain.ValidationError
-	if _, _, err := e.auth.IssueLoginCode(ctx, tgIdent(555, "ali")); !errors.As(err, &ve) {
-		t.Fatalf("tez-tez kod so'rash cheklanishi kerak: %v", err)
+	p := prof("555", "ali")
+	e.sendCode(t, p)
+
+	msg := e.notif.sent[0].text
+	if !strings.Contains(msg, "https://watcher.test/login") || !strings.Contains(msg, "5 daqiqa") || !strings.Contains(msg, "hech kimga bermang") {
+		t.Fatalf("xabar: %q", msg)
 	}
-	// Boshqa akkauntga ta'sir qilmaydi.
-	if _, _, err := e.auth.IssueLoginCode(ctx, tgIdent(556, "vali")); err != nil {
+
+	// Tez-tez so'ralsa kod emas, sabab yuboriladi (ikkinchi kod berilmaydi).
+	if err := e.auth.SendLoginCode(ctx, p); err != nil {
 		t.Fatal(err)
 	}
-	e.clock.add(domain.LoginCodeCooldown)
-	if _, _, err := e.auth.IssueLoginCode(ctx, tgIdent(555, "ali")); err != nil {
-		t.Fatalf("oraliq o'tgach yana berilishi kerak: %v", err)
+	if e.notif.count("555") != 2 || codeRe.MatchString(e.notif.sent[1].text) {
+		t.Fatalf("ikkinchi xabarda kod bo'lmasligi kerak: %+v", e.notif.sent)
 	}
-	if _, _, err := e.auth.IssueLoginCode(ctx, domain.Identity{}); err == nil {
+	if len(e.codes.m) != 1 {
+		t.Fatal("bitta akkauntda bitta amal qiluvchi kod bo'lishi kerak")
+	}
+	// Boshqa akkauntga ta'sir qilmaydi; oraliq o'tgach yana beriladi.
+	e.sendCode(t, prof("556", "vali"))
+	e.clock.add(domain.LoginCodeCooldown)
+	e.sendCode(t, p)
+
+	if err := e.auth.SendLoginCode(ctx, domain.TelegramProfile{}); err == nil {
 		t.Fatal("Telegram ID'siz kod berilmasligi kerak")
 	}
 }
@@ -127,7 +161,7 @@ func TestIssueLoginCodeCooldown(t *testing.T) {
 func TestLoginCodeBruteForceLimit(t *testing.T) {
 	e := newEnv(10, 0)
 	ctx := context.Background()
-	code := e.issue(t, 555)
+	code := e.sendCode(t, prof("555", "ali"))
 
 	for i := 0; i < 5; i++ {
 		_, _, _, err := e.auth.LoginWithCode(ctx, "AAAAAAAA", "6.6.6.6")
@@ -154,7 +188,7 @@ func TestLoginCodeBruteForceLimit(t *testing.T) {
 func TestLoginCodeGlobalLimit(t *testing.T) {
 	e := newEnv(10, 0)
 	ctx := context.Background()
-	code := e.issue(t, 555)
+	code := e.sendCode(t, prof("555", "ali"))
 	// Har xil manzillardan tanlab topishga urinish: umumiy chegara to'xtatadi.
 	for i := 0; i < 60; i++ {
 		_, _, _, _ = e.auth.LoginWithCode(ctx, "AAAAAAAA", "ip-"+string(rune('a'+i%26))+string(rune('a'+i/26)))
@@ -170,7 +204,7 @@ func TestLoginCodeSuccessResetsFailures(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		_, _, _, _ = e.auth.LoginWithCode(ctx, "AAAAAAAA", "ip")
 	}
-	if _, _, _, err := e.auth.LoginWithCode(ctx, e.issue(t, 555), "ip"); err != nil {
+	if _, _, _, err := e.auth.LoginWithCode(ctx, e.sendCode(t, prof("555", "ali")), "ip"); err != nil {
 		t.Fatal(err)
 	}
 	for i := 0; i < 4; i++ {
@@ -180,35 +214,27 @@ func TestLoginCodeSuccessResetsFailures(t *testing.T) {
 	}
 }
 
-func TestSendLoginCodeMessage(t *testing.T) {
+func TestLoginCodeRejectsDisabledUser(t *testing.T) {
 	e := newEnv(10, 0)
 	ctx := context.Background()
-	if err := e.tg.SendLoginCode(ctx, tgIdent(555, "ali")); err != nil {
+	p := prof("555", "ali")
+	_, u, _, err := e.auth.LoginWithCode(ctx, e.sendCode(t, p), "ip")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if e.notif.count("555") != 1 {
-		t.Fatal("kod faqat so'ragan foydalanuvchining chatiga yuborilishi kerak")
+	if err := e.users.SetDisabled(ctx, u.ID, true); err != nil {
+		t.Fatal(err)
 	}
-	msg := e.notif.sent[0].text
-	code := codeRe.FindString(msg)
-	if code == "" || !strings.Contains(msg, "https://watcher.test/login") || !strings.Contains(msg, "5 daqiqa") {
-		t.Fatalf("xabar: %q", msg)
-	}
-	if _, _, _, err := e.auth.LoginWithCode(ctx, code, "ip"); err != nil {
-		t.Fatalf("xabardagi kod ishlashi kerak: %v", err)
-	}
-
-	// Tez-tez so'ralsa kod emas, sabab yuboriladi.
-	_ = e.tg.SendLoginCode(ctx, tgIdent(556, "vali"))
-	_ = e.tg.SendLoginCode(ctx, tgIdent(556, "vali"))
-	if e.notif.count("556") != 2 || codeRe.MatchString(e.notif.sent[2].text) {
-		t.Fatalf("ikkinchi xabarda kod bo'lmasligi kerak: %+v", e.notif.sent)
+	e.clock.add(domain.LoginCodeCooldown)
+	token, _, _, err := e.auth.LoginWithCode(ctx, e.sendCode(t, p), "ip")
+	if !errors.Is(err, domain.ErrForbidden) || token != "" {
+		t.Fatalf("administrator o'chirgan akkaunt kod bilan kira olmasligi kerak: %q %v", token, err)
 	}
 }
 
 func TestCleanupRemovesExpiredCodes(t *testing.T) {
 	e := newEnv(10, 0)
-	e.issue(t, 555)
+	e.sendCode(t, prof("555", "ali"))
 	e.clock.add(domain.LoginCodeTTL + time.Minute)
 	if _, err := e.auth.CleanupExpired(context.Background()); err != nil {
 		t.Fatal(err)

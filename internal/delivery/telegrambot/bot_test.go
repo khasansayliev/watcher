@@ -10,58 +10,54 @@ import (
 	"github.com/khasansayliev/watcher/internal/domain"
 )
 
-type fakeSvc struct {
-	greeted []string
-	idents  []domain.Identity
+type fakeLogin struct {
+	greeted   []string
+	codes     []domain.TelegramProfile
+	confirmed []string // tugma oqimi: "/start <kod>"
 }
 
-func (f *fakeSvc) Greet(_ context.Context, chat string) error {
+func (f *fakeLogin) ConfirmLogin(_ context.Context, code string, _ domain.TelegramProfile) error {
+	f.confirmed = append(f.confirmed, code)
+	return nil
+}
+func (f *fakeLogin) Greet(_ context.Context, chat string) error {
 	f.greeted = append(f.greeted, chat)
 	return nil
 }
-func (f *fakeSvc) SendLoginCode(_ context.Context, id domain.Identity) error {
-	f.idents = append(f.idents, id)
+func (f *fakeLogin) SendLoginCode(_ context.Context, p domain.TelegramProfile) error {
+	f.codes = append(f.codes, p)
 	return nil
 }
-
-func TestParseCommand(t *testing.T) {
-	cases := map[string][2]string{
-		"/login":             {"/login", ""},
-		"/LOGIN@WatcherBot":  {"/login", ""},
-		"  /start login ":    {"/start", "login"},
-		"/start":             {"/start", ""},
-		"salom":              {"salom", ""},
-		"/login@bot extra x": {"/login", "extra x"},
-	}
-	for in, want := range cases {
-		if c, a := parseCommand(in); c != want[0] || a != want[1] {
-			t.Errorf("%q -> %q %q, kutilgan %v", in, c, a, want)
-		}
-	}
-}
+func (f *fakeLogin) LogoutAll(context.Context, string) error { return nil }
 
 func TestHandleRouting(t *testing.T) {
-	svc := &fakeSvc{}
-	b := New(nil, svc, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	f := &fakeLogin{}
+	b := New(nil, f, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	up := func(text string) telegram.Update {
-		return telegram.Update{ChatID: "42", FromID: 42, FirstName: "Ali", Username: "ali", Text: text}
+		return telegram.Update{ChatID: "42", Username: "ali", Name: "Ali", Text: text}
 	}
+	for _, text := range []string{
+		"/start",             // salom
+		"/start login",       // saytdagi "kod olish" havolasi → kod
+		"/login",             // kod
+		"/login@watcher_bot", // kod
+		"/start abc123XYZ",   // tugma oqimi: kirish so'rovini tasdiqlash
+		"boshqa matn",        // e'tiborsiz
+	} {
+		b.handle(context.Background(), up(text))
+	}
+	b.handle(context.Background(), telegram.Update{Text: "/login"}) // shaxsiy chat emas — e'tiborsiz
 
-	b.handle(context.Background(), up("/start"))
-	b.handle(context.Background(), up("/start login"))
-	b.handle(context.Background(), up("/login"))
-	b.handle(context.Background(), up("/login@watcher_bot"))
-	b.handle(context.Background(), up("boshqa matn"))
-	b.handle(context.Background(), telegram.Update{Text: "/login"})               // shaxsiy chat emas — e'tiborsiz
-	b.handle(context.Background(), telegram.Update{ChatID: "42", Text: "/login"}) // yuboruvchi noma'lum — e'tiborsiz
-
-	if len(svc.greeted) != 1 {
-		t.Fatalf("faqat oddiy /start salomlashishi kerak: %v", svc.greeted)
+	if len(f.greeted) != 1 {
+		t.Fatalf("faqat oddiy /start salomlashishi kerak: %v", f.greeted)
 	}
-	if len(svc.idents) != 3 {
-		t.Fatalf("3 ta kod so'rovi kutilgan: %d", len(svc.idents))
+	if len(f.confirmed) != 1 || f.confirmed[0] != "abc123XYZ" {
+		t.Fatalf("tugma oqimi buzilmasligi kerak: %v", f.confirmed)
 	}
-	if id := svc.idents[0]; id.TelegramID != 42 || id.Username != "ali" || id.FirstName != "Ali" {
-		t.Fatalf("identity: %+v", id)
+	if len(f.codes) != 3 { // "/start login", "/login", "/login@watcher_bot"
+		t.Fatalf("3 ta kod so'rovi kutilgan: %d", len(f.codes))
+	}
+	if p := f.codes[0]; p.ID != "42" || p.Username != "ali" || p.Name != "Ali" {
+		t.Fatalf("profil: %+v", p)
 	}
 }

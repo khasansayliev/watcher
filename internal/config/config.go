@@ -13,7 +13,7 @@ import (
 
 type Config struct {
 	Listen   string
-	BaseURL  string // tashqi manzil: https://bilet.example.uz (OAuth redirect shundan yasaladi)
+	BaseURL  string // tashqi manzil: https://bilet.example.uz (cookie'lar Secure bo'lishi shu bilan aniqlanadi)
 	TimeZone string
 	DataDir  string
 
@@ -29,7 +29,8 @@ type Config struct {
 	MaxSearchesPerCycle int
 	MaxWatchesPerUser   int
 	SessionTTL          time.Duration
-	AdminTelegramIDs    []int64
+	LogRetention        time.Duration // tekshiruv loglarini saqlash muddati
+	AdminTelegramIDs    []string
 
 	Warnings []string
 }
@@ -44,7 +45,7 @@ func Load() (Config, error) {
 		DataDir:        env("DATA_DIR", "./data"),
 		DatabasePath:   os.Getenv("DATABASE_PATH"),
 		TelegramToken:  os.Getenv("TELEGRAM_BOT_TOKEN"),
-		RailwayBaseURL: strings.TrimRight(env("RAILWAY_BASE", "https://eticket.railway.uz"), "/"),
+		RailwayBaseURL: strings.TrimRight(env("RAILWAY_BASE", "https://eticket.uzrailpass.uz"), "/"),
 		RailwayLang:    env("RAILWAY_LANG", "uz"),
 		RailwayCookie:  os.Getenv("RAILWAY_COOKIE"),
 		StationsFile:   os.Getenv("STATIONS_FILE"),
@@ -55,7 +56,7 @@ func Load() (Config, error) {
 		c.DatabasePath = filepath.Join(c.DataDir, "watcher.db")
 	}
 	if c.TelegramToken == "" {
-		errs = append(errs, errors.New("TELEGRAM_BOT_TOKEN kerak — kirish ham, bildirishnomalar ham Telegram bot orqali"))
+		errs = append(errs, errors.New("TELEGRAM_BOT_TOKEN kerak: kirish Telegram orqali amalga oshadi"))
 	}
 
 	var err error
@@ -65,27 +66,25 @@ func Load() (Config, error) {
 	if c.SessionTTL, err = duration("SESSION_TTL", "720h"); err != nil {
 		errs = append(errs, err)
 	}
+	days, derr := integer("LOG_RETENTION_DAYS", 14)
+	if derr != nil {
+		errs = append(errs, derr)
+	}
+	c.LogRetention = time.Duration(days) * 24 * time.Hour
 	if c.MaxSearchesPerCycle, err = integer("MAX_SEARCHES_PER_CYCLE", 30); err != nil {
 		errs = append(errs, err)
 	}
 	if c.MaxWatchesPerUser, err = integer("MAX_WATCHES_PER_USER", 10); err != nil {
 		errs = append(errs, err)
 	}
-	for _, e := range strings.Split(os.Getenv("ADMIN_TELEGRAM_IDS"), ",") {
-		if e = strings.TrimSpace(e); e == "" {
-			continue
+	for _, id := range strings.Split(os.Getenv("ADMIN_TELEGRAM_IDS"), ",") {
+		if id = strings.TrimSpace(id); id != "" {
+			c.AdminTelegramIDs = append(c.AdminTelegramIDs, id)
 		}
-		id, err := strconv.ParseInt(e, 10, 64)
-		if err != nil || id <= 0 {
-			errs = append(errs, fmt.Errorf("ADMIN_TELEGRAM_IDS: %q — Telegram ID raqam bo'lishi kerak", e))
-			continue
-		}
-		c.AdminTelegramIDs = append(c.AdminTelegramIDs, id)
 	}
 	if os.Getenv("ADMIN_EMAILS") != "" {
-		c.Warnings = append(c.Warnings, "ADMIN_EMAILS endi ishlatilmaydi — ADMIN_TELEGRAM_IDS ga Telegram ID'larni yozing")
+		c.Warnings = append(c.Warnings, "ADMIN_EMAILS endi ishlatilmaydi — adminlar ADMIN_TELEGRAM_IDS (Telegram ID'lar, vergul bilan) orqali beriladi")
 	}
-
 	if !c.SecureCookies() {
 		c.Warnings = append(c.Warnings, "BASE_URL https emas — productionda albatta https ishlating")
 	}

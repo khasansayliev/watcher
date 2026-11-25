@@ -10,12 +10,16 @@ import (
 
 // Watch — foydalanuvchining kuzatuvi (asosiy entity).
 type Watch struct {
-	ID        int64
-	UserID    int64
-	Route     Route
-	Filter    Filter
-	Active    bool
-	CreatedAt time.Time
+	ID     int64
+	UserID int64
+	Route  Route
+	Filter Filter
+	Active bool
+	// AdminDisabled — admin to'xtatgan; foydalanuvchi uni o'zi qayta yoqa olmaydi.
+	AdminDisabled bool
+	// CheckEvery — admin shu kuzatuv uchun belgilagan tekshiruv oralig'i; 0 = umumiy jadval bo'yicha.
+	CheckEvery time.Duration
+	CreatedAt  time.Time
 
 	LastCheck    time.Time
 	LastStatus   string
@@ -29,22 +33,78 @@ type NewWatchParams struct {
 	Filter Filter
 }
 
-// NewWatch biznes qoidalarini tekshirib, foydalanuvchiga tegishli yangi faol kuzatuv yaratadi.
-func NewWatch(owner User, p NewWatchParams, today string, now time.Time) (Watch, error) {
+// validateParams yo'nalish va shartlarni tozalab, biznes qoidalari bo'yicha tekshiradi.
+func validateParams(p *NewWatchParams, today string) error {
 	p.Filter.CarType = strings.TrimSpace(p.Filter.CarType)
+	p.Filter.Window = trimWindow(p.Filter.Window)
 	if err := p.Route.Validate(today); err != nil {
-		return Watch{}, err
+		return err
 	}
 	if p.Filter.MaxPrice < 0 {
-		return Watch{}, NewValidationError("Maks. narx manfiy bo'lmasin")
+		return NewValidationError("Maks. narx manfiy bo'lmasin")
 	}
 	if p.Filter.MinSeats < 0 || p.Filter.MinSeats > 50 {
-		return Watch{}, NewValidationError("Joylar soni 1–50 oralig'ida bo'lsin")
+		return NewValidationError("Joylar soni 1–50 oralig'ida bo'lsin")
+	}
+	if err := p.Filter.Window.Validate(); err != nil {
+		return err
 	}
 	if len(p.Filter.CarType) > 64 {
-		return Watch{}, NewValidationError("Filtr juda uzun")
+		return NewValidationError("Filtr juda uzun")
+	}
+	return nil
+}
+
+// NewWatch biznes qoidalarini tekshirib, foydalanuvchiga tegishli yangi faol kuzatuv yaratadi.
+func NewWatch(owner User, p NewWatchParams, today string, now time.Time) (Watch, error) {
+	if !owner.HasTelegram() {
+		return Watch{}, NewValidationError("Telegram akkauntingiz topilmadi — qaytadan kiring")
+	}
+	if err := validateParams(&p, today); err != nil {
+		return Watch{}, err
 	}
 	return Watch{UserID: owner.ID, Route: p.Route, Filter: p.Filter, Active: true, CreatedAt: now}, nil
+}
+
+// ApplyEdit yo'nalish, sana va shartlarni yangilaydi. Eski natijalar yangi shartga tegishli emas,
+// shuning uchun tekshiruv holati boshidan boshlanadi: darhol tekshiriladi va birinchi topilma haqida xabar beriladi.
+// Sanasi o'tib ketgani sababli to'xtagan kuzatuv yangi (kelajakdagi) sana bilan qayta yoqiladi.
+// Admin to'xtatgani (AdminDisabled) va admin belgilagan oraliq o'zgarmaydi.
+func (w *Watch) ApplyEdit(p NewWatchParams, today string) error {
+	if err := validateParams(&p, today); err != nil {
+		return err
+	}
+	if !w.Active && w.IsExpired(today) {
+		w.Active = true
+	}
+	w.Route, w.Filter = p.Route, p.Filter
+	w.LastCheck, w.LastMatches, w.LastSig = time.Time{}, 0, ""
+	w.LastStatus = "O'zgartirildi — tekshiruv kutilmoqda"
+	return nil
+}
+
+// Runnable — kuzatuv tekshirilishi kerakmi (foydalanuvchi ham, admin ham to'xtatmagan).
+func (w Watch) Runnable() bool { return w.Active && !w.AdminDisabled }
+
+// IntervalIn kuzatuv qanchada bir tekshirilishini aytadi: admin belgilagan oraliq, bo'lmasa jadvaldagisi.
+func (w Watch) IntervalIn(p PollingPolicy, today string) time.Duration {
+	if w.CheckEvery > 0 {
+		return w.CheckEvery
+	}
+	return p.IntervalFor(w.Route.Date, today)
+}
+
+// ValidateCheckEvery admin belgilaydigan oraliqni tekshiradi (0 = jadvalga qaytarish).
+func ValidateCheckEvery(d time.Duration) error {
+	switch {
+	case d == 0:
+		return nil
+	case d < MinCheckInterval:
+		return NewValidationError(fmt.Sprintf("Oraliq kamida %s bo'lishi kerak", textfmt.Interval(MinCheckInterval)))
+	case d > MaxCheckInterval:
+		return NewValidationError("Oraliq ko'pi bilan 7 kun bo'lishi mumkin")
+	}
+	return nil
 }
 
 func (w Watch) OwnedBy(userID int64) bool { return w.UserID == userID }

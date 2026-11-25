@@ -1,6 +1,6 @@
 // Package telegrambot — Telegram'dan kiruvchi buyruqlar (delivery qatlami).
-// /start — saytga qanday kirishni aytadi (botga /start yozish bot foydalanuvchiga xabar yubora olishini ham ta'minlaydi).
-// /login (yoki /start login) — Telegram'i yo'q qurilmadan saytga kirish uchun bir martalik kod beradi.
+// Bot "/start <kod>" (saytga kirish), "/login" (Telegram'siz qurilma uchun kod) va "/logout" ni oladi va usecase'ga uzatadi;
+// o'zi biznes mantiq saqlamaydi.
 package telegrambot
 
 import (
@@ -13,19 +13,23 @@ import (
 	"github.com/khasansayliev/watcher/internal/domain"
 )
 
-type Service interface {
+// LoginHandler — botdan kelgan kirish buyruqlarini qayta ishlaydigan usecase.
+type LoginHandler interface {
+	ConfirmLogin(ctx context.Context, code string, p domain.TelegramProfile) error
 	Greet(ctx context.Context, chatID string) error
-	SendLoginCode(ctx context.Context, ident domain.Identity) error
+	// SendLoginCode — Telegram'i yo'q qurilmadan kirish uchun bir martalik kodni shu chatga yuboradi.
+	SendLoginCode(ctx context.Context, p domain.TelegramProfile) error
+	LogoutAll(ctx context.Context, telegramID string) error
 }
 
 type Bot struct {
 	client *telegram.Client
-	svc    Service
+	login  LoginHandler
 	log    *slog.Logger
 }
 
-func New(c *telegram.Client, svc Service, log *slog.Logger) *Bot {
-	return &Bot{client: c, svc: svc, log: log}
+func New(c *telegram.Client, l LoginHandler, log *slog.Logger) *Bot {
+	return &Bot{client: c, login: l, log: log}
 }
 
 // Run long polling sikli. Bot uchun webhook o'rnatilmagan bo'lishi kerak.
@@ -59,26 +63,34 @@ func (b *Bot) Run(ctx context.Context) {
 }
 
 func (b *Bot) handle(ctx context.Context, u telegram.Update) {
-	if u.ChatID == "" || u.FromID == 0 {
+	if u.ChatID == "" {
 		return
 	}
-	cmd, arg := parseCommand(u.Text)
-	switch {
-	case cmd == "/login", cmd == "/start" && arg == "login": // t.me/<bot>?start=login — saytdagi tugma
-		ident := domain.Identity{TelegramID: u.FromID, FirstName: u.FirstName, LastName: u.LastName, Username: u.Username}
-		if err := b.svc.SendLoginCode(ctx, ident); err != nil {
-			b.log.Warn("telegram /login", "chat", u.ChatID, "err", err)
-		}
-	case cmd == "/start":
-		if err := b.svc.Greet(ctx, u.ChatID); err != nil {
-			b.log.Info("telegram /start", "chat", u.ChatID, "err", err)
-		}
+	cmd, arg, _ := strings.Cut(strings.TrimSpace(u.Text), " ")
+	if at := strings.IndexByte(cmd, '@'); at >= 0 { // "/start@my_bot"
+		cmd = cmd[:at]
 	}
-}
-
-// parseCommand "/login@bot arg" ni ("/login", "arg") ga ajratadi.
-func parseCommand(text string) (cmd, arg string) {
-	cmd, arg, _ = strings.Cut(strings.TrimSpace(text), " ")
-	cmd, _, _ = strings.Cut(cmd, "@")
-	return strings.ToLower(cmd), strings.TrimSpace(arg)
+	var err error
+	switch cmd {
+	case "/login": // Telegram'i yo'q qurilma uchun kod
+		err = b.login.SendLoginCode(ctx, domain.TelegramProfile{ID: u.ChatID, Username: u.Username, Name: u.Name})
+	case "/start":
+		switch arg = strings.TrimSpace(arg); arg {
+		case "":
+			err = b.login.Greet(ctx, u.ChatID)
+		case "login": // t.me/<bot>?start=login — saytdagi "kod olish" havolasi
+			err = b.login.SendLoginCode(ctx, domain.TelegramProfile{ID: u.ChatID, Username: u.Username, Name: u.Name})
+		default:
+			err = b.login.ConfirmLogin(ctx, arg, domain.TelegramProfile{ID: u.ChatID, Username: u.Username, Name: u.Name})
+		}
+	case "/logout":
+		if err = b.login.LogoutAll(ctx, u.ChatID); err == nil {
+			err = b.client.SendMessage(ctx, u.ChatID, "Barcha qurilmalardagi sessiyalar tugatildi.", false)
+		}
+	default:
+		return
+	}
+	if err != nil {
+		b.log.Info("telegram buyruq", "cmd", cmd, "chat", u.ChatID, "err", err)
+	}
 }

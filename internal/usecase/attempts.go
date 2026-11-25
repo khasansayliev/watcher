@@ -68,13 +68,13 @@ func dropBefore(ts []time.Time, cut time.Time) []time.Time {
 // cooldown — kalit bo'yicha "oxirgi marta qachon" (kod so'rash oralig'i uchun).
 type cooldown struct {
 	mu   sync.Mutex
-	last map[int64]time.Time
+	last map[string]time.Time
 }
 
-func newCooldown() *cooldown { return &cooldown{last: map[int64]time.Time{}} }
+func newCooldown() *cooldown { return &cooldown{last: map[string]time.Time{}} }
 
 // try ruxsat bersa true qaytaradi va vaqtni yozib qo'yadi.
-func (c *cooldown) try(id int64, now time.Time, gap time.Duration) bool {
+func (c *cooldown) try(id string, now time.Time, gap time.Duration) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if len(c.last) > 1000 { // xotira o'sib ketmasin

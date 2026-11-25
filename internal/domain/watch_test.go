@@ -38,7 +38,7 @@ func TestMatchTrainsFilters(t *testing.T) {
 
 func TestNewWatchValidation(t *testing.T) {
 	now := time.Now()
-	owner := User{ID: 7, TelegramID: 42}
+	owner := User{ID: 7, TelegramChatID: "42"}
 	ok := NewWatchParams{Route: Route{From: "1", To: "2", Date: "2026-12-05"}}
 	w, err := NewWatch(owner, ok, "2026-11-23", now)
 	if err != nil {
@@ -64,23 +64,19 @@ func TestNewWatchValidation(t *testing.T) {
 	}
 }
 
-func TestIdentityValidate(t *testing.T) {
-	now := time.Date(2026, 11, 24, 18, 0, 0, 0, time.UTC)
-	ok := Identity{TelegramID: 42, FirstName: "Jem", AuthDate: now.Add(-time.Minute)}
-	if err := ok.Validate(now); err != nil {
+func TestTelegramProfileValidate(t *testing.T) {
+	if err := (TelegramProfile{ID: "42"}).Validate(); err != nil {
 		t.Fatal(err)
 	}
-	bad := map[string]Identity{
-		"ID yo'q":           {AuthDate: now},
-		"eskirgan (replay)": {TelegramID: 42, AuthDate: now.Add(-MaxAuthAge - time.Second)},
-		"kelajakdan":        {TelegramID: 42, AuthDate: now.Add(10 * time.Minute)},
-		"auth_date yo'q":    {TelegramID: 42},
+	if err := (TelegramProfile{}).Validate(); err == nil {
+		t.Fatal("ID'siz profil rad etilishi kerak")
 	}
-	for name, id := range bad {
-		var ve *ValidationError
-		if err := id.Validate(now); !errors.As(err, &ve) {
-			t.Errorf("%s: ValidationError kutilgan, olindi %v", name, err)
-		}
+}
+
+func TestUserIsAdmin(t *testing.T) {
+	u := User{TelegramChatID: "42"}
+	if !u.IsAdmin([]string{"7", " 42 "}) || u.IsAdmin([]string{"7"}) || (User{}).IsAdmin([]string{""}) {
+		t.Fatal("admin tekshiruvi noto'g'ri")
 	}
 }
 

@@ -12,24 +12,18 @@
   <h1>Watcher</h1>
   <p class="hint">Poyezdga bo'sh joy chiqishi bilan Telegram'ga xabar oling.</p>
   {{if .Error}}<div class="flash err">{{.Error}}</div>{{end}}
-  <div style="margin-top:24px;min-height:48px">
-  {{if .BotUsername}}
-    <script async src="https://telegram.org/js/telegram-widget.js?22"
-      data-telegram-login="{{.BotUsername}}" data-size="large" data-radius="8"
-      data-auth-url="{{.AuthURL}}" data-request-access="write"></script>
-  {{else}}
-    <div class="flash err">Telegram bot sozlanmagan (TELEGRAM_BOT_TOKEN)</div>
-  {{end}}
-  </div>
-  <p class="hint">Telegram oynasida tasdiqlang va bot sizga xabar yuborishiga ruxsat bering —
-    bo'sh joy haqidagi bildirishnomalar shu bot orqali keladi.</p>
+  <form method="post" action="/login/telegram" style="margin-top:24px">
+    <button class="tgbtn" type="submit">
+      ✈️ Telegram orqali kirish
+    </button>
+  </form>
+  <p class="hint" style="margin-top:16px">Yangi foydalanuvchi bo'lsangiz, akkaunt avtomatik yaratiladi.</p>
 
-  {{if .BotUsername}}
   <div class="or">yoki kod bilan</div>
   <h2 style="font-size:16px;margin-bottom:6px">Bu qurilmada Telegram yo'qmi?</h2>
   <ol class="steps">
-    <li>Telegram o'rnatilgan boshqa qurilmada (masalan, telefon) <a href="https://t.me/{{.BotUsername}}?start=login" rel="noopener">@{{.BotUsername}}</a>
-      botini oching va <b>Start</b> ni bosing yoki <code>/login</code> deb yozing.</li>
+    <li>Telegram o'rnatilgan boshqa qurilmada (masalan, telefon){{if .CodeBotURL}} <a href="{{.CodeBotURL}}" rel="noopener">botni oching</a> va <b>Start</b> ni bosing{{else}} botni oching{{end}}
+      yoki unga <code>/login</code> deb yozing.</li>
     <li>Bot yuborgan kodni shu yerga kiriting (5 daqiqa amal qiladi).</li>
   </ol>
   <form method="post" action="/login/code" class="codeform">
@@ -37,7 +31,6 @@
       autocomplete="one-time-code" autocapitalize="characters" autocorrect="off" spellcheck="false" aria-label="Kirish kodi">
     <button type="submit">Kirish</button>
   </form>
-  {{end}}
   <p class="hint" style="margin-top:24px">Biletni sotib olish rasmiy saytda amalga oshiriladi.</p>
 </div>
 </body>

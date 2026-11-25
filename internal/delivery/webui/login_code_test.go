@@ -18,6 +18,14 @@ type fakeAuth struct {
 	AuthUseCase
 	gotCode, gotKey string
 	err             error
+	botErr          error
+}
+
+func (f *fakeAuth) BotURL(code string) (string, error) {
+	if f.botErr != nil {
+		return "", f.botErr
+	}
+	return "https://t.me/watcher_bot?start=" + code, nil
 }
 
 func (f *fakeAuth) LoginWithCode(_ context.Context, code, key string) (string, domain.User, time.Time, error) {
@@ -33,7 +41,7 @@ func (f *fakeAuth) Authenticate(context.Context, string) (domain.User, error) {
 
 func newTestServer(t *testing.T, a AuthUseCase) http.Handler {
 	t.Helper()
-	s, err := New(Deps{Auth: a, BotUsername: "watcher_bot", BaseURL: "https://watcher.test", SecureCookies: true})
+	s, err := New(Deps{Auth: a, SecureCookies: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,15 +61,28 @@ func postCode(h http.Handler, code string, mod func(*http.Request)) *httptest.Re
 	return rec
 }
 
-func TestLoginPageShowsCodeForm(t *testing.T) {
+func TestLoginPageShowsButtonAndCodeForm(t *testing.T) {
 	h := newTestServer(t, &fakeAuth{})
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/login", nil))
 	body := rec.Body.String()
-	for _, want := range []string{`action="/login/code"`, `name="code"`, "https://t.me/watcher_bot?start=login", "/login"} {
+	for _, want := range []string{
+		`action="/login/telegram"`, // asosiy tugma oqimi saqlangan
+		`action="/login/code"`, `name="code"`, "https://t.me/watcher_bot?start=login", "/login",
+	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("login sahifasida %q yo'q", want)
 		}
+	}
+}
+
+func TestLoginPageWithoutBotLink(t *testing.T) {
+	h := newTestServer(t, &fakeAuth{botErr: errors.New("getMe xato")})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/login", nil))
+	body := rec.Body.String()
+	if rec.Code != http.StatusOK || !strings.Contains(body, `action="/login/code"`) || strings.Contains(body, "t.me/") {
+		t.Fatalf("bot havolasi olinmasa ham forma ko'rinishi kerak, havolasiz: %d", rec.Code)
 	}
 }
 

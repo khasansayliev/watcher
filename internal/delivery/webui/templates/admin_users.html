@@ -1,0 +1,40 @@
+{{template "head" .}}
+{{template "adminnav" .}}
+<section class="card">
+  <h2>Kuzatuv yaratish rejimi</h2>
+  <form method="post" action="/admin/settings/creation" class="row">
+    <input type="hidden" name="back" value="{{.Back}}">
+    {{range .Modes}}<button name="mode" value="{{.Value}}" class="{{if not .Current}}ghost{{end}}">{{.Label}}{{if .Current}} ✓{{end}}</button>{{end}}
+  </form>
+  <p class="hint">{{.ModeNote}}. Adminlar har doim kuzatuv yarata oladi.</p>
+</section>
+
+<section class="card">
+  <h2>Foydalanuvchilar ({{.Total}})</h2>
+  <table class="stack">
+    <thead><tr><th>Foydalanuvchi</th><th>Kuzatuvlar (faol / jami)</th><th>Yaratish</th><th>Holat</th><th></th></tr></thead>
+    <tbody>
+    {{$back := .Back}}
+    {{range .Users}}
+      <tr class="{{if .Disabled}}off{{end}}">
+        <td class="full" data-label="Foydalanuvchi"><b>{{.Name}}</b>{{if .IsAdmin}} <span class="badge">admin</span>{{end}}{{if .IsSelf}} <small>(siz)</small>{{end}}
+            <br><small>{{if .Handle}}{{.Handle}} · {{end}}ID {{.TelegramID}} · {{.Created}} dan{{if .LastLogin}} · kirgan: {{.LastLogin}}{{end}}</small></td>
+        <td data-label="Kuzatuvlar (faol / jami)">{{.Watches}}</td>
+        <td data-label="Yaratish">{{if .CanCreate}}<span class="badge ok">ruxsat bor</span>{{else}}<span class="badge">ruxsat yo'q</span>{{end}}</td>
+        <td data-label="Holat">{{if .Disabled}}<span class="badge err">o'chirilgan</span>{{else}}<span class="badge ok">faol</span>{{end}}</td>
+        <td class="actions">
+          <form method="post" action="/admin/users/{{.ID}}/creation"><input type="hidden" name="back" value="{{$back}}">
+            {{if .CanCreate}}<button class="ghost" name="v" value="0">Ruxsatni ol</button>{{else}}<button class="ghost" name="v" value="1">Ruxsat ber</button>{{end}}</form>
+          {{if not .IsSelf}}
+          <form method="post" action="/admin/users/{{.ID}}/disabled"><input type="hidden" name="back" value="{{$back}}">
+            {{if .Disabled}}<button class="ghost" name="v" value="0">Yoq</button>{{else}}<button class="ghost danger" name="v" value="1">O'chir</button>{{end}}</form>
+          {{end}}
+          <a href="/admin/watches?user={{.ID}}"><button class="ghost" type="button">Kuzatuvlari</button></a>
+        </td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{template "pager" .Pager}}
+</section>
+{{template "foot" .}}
