@@ -9,6 +9,13 @@ bo'yicha kuzatuv yaratadi. Bo'sh joy chiqqanda Telegram'ga xabar keladi. Sotib o
   imzolaydi, server esa imzoni (HMAC-SHA256) tekshiradi, shuning uchun ma'lumotni soxtalashtirib bo'lmaydi.
   1 soatdan eski ma'lumot rad etiladi (replay himoyasi). Kirish faqat sayt login sahifasi ochilgan brauzerda
   yakunlanadi (login CSRF himoyasi). Sessiya tokeni HttpOnly cookie'da, bazada uning sha256 xeshi saqlanadi.
+- **Kod bilan kirish** (Telegram'i yo'q qurilmalar uchun). Telegram o'rnatilgan boshqa qurilmada (telefon) botga `/login`
+  yoziladi (yoki login sahifasidagi havola orqali **Start** bosiladi). Bot 8 belgili bir martalik kod yuboradi (`ABCD-EFGH`),
+  uni login sahifasidagi "Kod bilan kirish" maydoniga kiritiladi. Kod 5 daqiqa amal qiladi, bir marta ishlaydi, bazada faqat
+  sha256 xeshi saqlanadi, yangi kod eskisini bekor qiladi, kod so'rash 15 soniyada bir marta. Tanlab topishdan himoya:
+  bitta manzildan 10 daqiqada 5 ta xato (hamma manzillardan jami 60 ta) bo'lsa, kirish vaqtincha bloklanadi.
+  Widget va kod bir xil akkauntga olib keladi (Telegram ID bo'yicha), kuzatuvlar saqlanadi.
+  Nginx/Caddy orqasida ishlasa, manzil `X-Forwarded-For` dan olinadi (proxy shu sarlavhani o'zi qo'yishi shart).
 - **Alohida "ulash" bosqichi yo'q**: kirishda bot xabar yuborishiga ruxsat so'raladi, bildirishnomalar
   foydalanuvchining o'z Telegram'iga keladi.
 - Har bir foydalanuvchi **faqat o'z kuzatuvlarini** ko'radi va boshqaradi. Egalik usecase qatlamida tekshiriladi.
@@ -127,7 +134,7 @@ go test -race ./...
 
 Domen va usecase'lar soxta (fake) portlar bilan, tarmoqsiz va bazasiz tekshiriladi. Testlar qamrab olgan holatlar:
 Telegram imzosi (soxta, boshqa token, o'zgartirilgan maydon), eskirgan kirish ma'lumoti, sessiya muddati, egalik (A ning kuzatuvini B o'zgartira olmaydi), limitlar,
-Telegram kodining bir martaligi va muddati, bitta chatning ikki akkauntga bog'lanmasligi,
+kod bilan kirish (bir martalik, muddati, eski kod bekor bo'lishi, urinishlar chegarasi, widget bilan bitta akkaunt, bot buyruqlari, soxta `X-Forwarded-For`), bitta chatning ikki akkauntga bog'lanmasligi,
 bir xil yo'nalishga bitta so'rov, so'rovlar chegarasi va navbat, `Retry-After`, sanasi o'tgan kuzatuvlar.
 
 ## ⚠️ Birinchi ishga tushirishda tekshiring

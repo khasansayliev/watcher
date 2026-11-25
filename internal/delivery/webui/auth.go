@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/khasansayliev/watcher/internal/domain"
@@ -110,12 +112,61 @@ func (s *Server) telegramCallback(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	s.startSession(w, r, token, expires)
+}
+
+// codeLogin — Telegram'i yo'q qurilmada: botdan olingan bir martalik kod bilan kirish.
+func (s *Server) codeLogin(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<10)
+	if err := r.ParseForm(); err != nil {
+		loginError(w, r, "Noto'g'ri so'rov")
+		return
+	}
+	token, _, expires, err := s.d.Auth.LoginWithCode(r.Context(), r.PostFormValue("code"), clientKey(r))
+	if err != nil {
+		var ve *domain.ValidationError
+		switch {
+		case errors.As(err, &ve):
+			loginError(w, r, ve.Msg)
+		case errors.Is(err, usecase.ErrTooManyAttempts):
+			slog.Warn("kod bilan kirish: urinishlar chegarasi", "client", clientKey(r))
+			loginError(w, r, "Juda ko'p noto'g'ri urinish. Bir necha daqiqadan keyin qayta urinib ko'ring")
+		default:
+			slog.Error("kod bilan kirish", "err", err)
+			loginError(w, r, "Kod bilan kirib bo'lmadi")
+		}
+		return
+	}
+	s.startSession(w, r, token, expires)
+}
+
+func (s *Server) startSession(w http.ResponseWriter, r *http.Request, token string, expires time.Time) {
 	http.SetCookie(w, &http.Cookie{
 		Name: sessionCookie, Value: token, Path: "/",
 		Expires: expires, MaxAge: int(time.Until(expires).Seconds()),
 		HttpOnly: true, Secure: s.d.SecureCookies, SameSite: http.SameSiteLaxMode,
 	})
 	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// clientKey — urinishlarni cheklash uchun so'rov egasi. So'rov bevosita internetdan kelsa, bu uning manzili.
+// So'rov shu mashinadagi/Docker tarmog'idagi reverse proxy'dan (loopback yoki shaxsiy manzil) kelsa,
+// haqiqiy manzil X-Forwarded-For ning oxirgi yozuvida (proxy o'zi qo'shgan).
+// Internetdan kelgan so'rovda sarlavha e'tiborga olinmaydi, shuning uchun uni soxtalashtirib cheklovni aylanib o'tib bo'lmaydi.
+func clientKey(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	if ip := net.ParseIP(host); ip != nil && (ip.IsLoopback() || ip.IsPrivate()) {
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			parts := strings.Split(xff, ",")
+			if last := strings.TrimSpace(parts[len(parts)-1]); net.ParseIP(last) != nil {
+				return last
+			}
+		}
+	}
+	return host
 }
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {

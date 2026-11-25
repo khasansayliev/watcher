@@ -37,6 +37,15 @@ type SessionRepository interface {
 	DeleteExpired(ctx context.Context, now time.Time) (int64, error)
 }
 
+// LoginCodeRepository — kod bilan kirish uchun bir martalik kodlar. Kodning o'zi emas, sha256 xeshi saqlanadi.
+type LoginCodeRepository interface {
+	// Put kodni saqlaydi; shu Telegram akkauntning oldingi kodlari o'chiriladi (bir vaqtda bitta amal qiluvchi kod).
+	Put(ctx context.Context, hash []byte, ident domain.Identity, expiresAt time.Time) error
+	// Consume kodni atomar o'chiradi va egasini qaytaradi. Yo'q yoki muddati o'tgan bo'lsa domain.ErrNotFound.
+	Consume(ctx context.Context, hash []byte, now time.Time) (domain.Identity, error)
+	DeleteExpired(ctx context.Context, now time.Time) (int64, error)
+}
+
 // PollingRuleRepository — tekshiruv oraliqlari jadvali (admin boshqaradi).
 type PollingRuleRepository interface {
 	Get(ctx context.Context) (domain.PollingPolicy, error)

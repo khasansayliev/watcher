@@ -165,6 +165,50 @@ func (r *memSessions) DeleteExpired(_ context.Context, now time.Time) (int64, er
 	return n, nil
 }
 
+type codeRec struct {
+	ident   domain.Identity
+	expires time.Time
+}
+
+type memLoginCodes struct {
+	mu sync.Mutex
+	m  map[string]codeRec
+}
+
+func (r *memLoginCodes) Put(_ context.Context, h []byte, id domain.Identity, exp time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for k, c := range r.m {
+		if c.ident.TelegramID == id.TelegramID {
+			delete(r.m, k)
+		}
+	}
+	r.m[string(h)] = codeRec{id, exp}
+	return nil
+}
+func (r *memLoginCodes) Consume(_ context.Context, h []byte, now time.Time) (domain.Identity, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	c, ok := r.m[string(h)]
+	if !ok || !c.expires.After(now) {
+		return domain.Identity{}, domain.ErrNotFound
+	}
+	delete(r.m, string(h))
+	return c.ident, nil
+}
+func (r *memLoginCodes) DeleteExpired(_ context.Context, now time.Time) (int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var n int64
+	for k, c := range r.m {
+		if !c.expires.After(now) {
+			delete(r.m, k)
+			n++
+		}
+	}
+	return n, nil
+}
+
 type memPolicy struct {
 	mu sync.Mutex
 	p  domain.PollingPolicy
@@ -264,6 +308,7 @@ type env struct {
 	watches  *memWatches
 	users    *memUsers
 	sessions *memSessions
+	codes    *memLoginCodes
 	search   *fakeSearcher
 	notif    *fakeNotifier
 	clock    *fixedClock
@@ -291,12 +336,13 @@ func newEnv(maxPerUser, maxSearches int) *env {
 		policy:   &memPolicy{p: domain.DefaultPollingPolicy()},
 	}
 	e.sessions = &memSessions{m: map[string]session{}, u: e.users}
+	e.codes = &memLoginCodes{m: map[string]codeRec{}}
 	log := discardLog()
 	e.monitor = usecase.NewMonitor(e.watches, e.policy, e.users, e.search, e.notif, e.clock,
 		usecase.MonitorConfig{Tick: 10 * time.Second, MaxSearchesPerCycle: maxSearches}, log)
 	e.ws = usecase.NewWatchService(e.watches, e.users, e.clock, e.monitor, maxPerUser)
-	e.auth = usecase.NewAuthService(e.verifier, e.users, e.sessions, e.clock, 24*time.Hour)
-	e.tg = usecase.NewTelegramService(e.users, e.notif, "https://watcher.test")
+	e.auth = usecase.NewAuthService(e.verifier, e.users, e.sessions, e.codes, e.clock, 24*time.Hour)
+	e.tg = usecase.NewTelegramService(e.users, e.notif, e.auth, "https://watcher.test")
 	e.searchUC = usecase.NewSearchService(e.search, e.monitor, e.clock, 10*time.Second, 0)
 	e.polling = usecase.NewPollingService(e.policy, e.watches, e.clock, []int64{adminTG})
 	return e

@@ -57,6 +57,7 @@ func run(log *slog.Logger) error {
 	}
 	users := sqlite.NewUsers(db)
 	sessions := sqlite.NewSessions(db)
+	loginCodes := sqlite.NewLoginCodes(db)
 	watchRepo := sqlite.NewWatches(db)
 	pollingRepo := sqlite.NewPollingRules(db)
 
@@ -89,10 +90,10 @@ func run(log *slog.Logger) error {
 		GroupPause:          2 * time.Second,
 		MaxSearchesPerCycle: cfg.MaxSearchesPerCycle,
 	}, log)
-	auth := usecase.NewAuthService(verifier, users, sessions, clk, cfg.SessionTTL)
+	auth := usecase.NewAuthService(verifier, users, sessions, loginCodes, clk, cfg.SessionTTL)
 	watches := usecase.NewWatchService(watchRepo, users, clk, monitor, cfg.MaxWatchesPerUser)
 	search := usecase.NewSearchService(rail, monitor, clk, 10*time.Second, 2*time.Second)
-	tgService := usecase.NewTelegramService(users, notifier, cfg.BaseURL)
+	tgService := usecase.NewTelegramService(users, notifier, auth, cfg.BaseURL)
 	polling := usecase.NewPollingService(pollingRepo, watchRepo, clk, cfg.AdminTelegramIDs)
 
 	// --- delivery ---

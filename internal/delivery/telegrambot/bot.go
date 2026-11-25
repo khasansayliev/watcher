@@ -1,6 +1,6 @@
 // Package telegrambot — Telegram'dan kiruvchi buyruqlar (delivery qatlami).
-// Hozircha faqat /start: foydalanuvchiga saytga qanday kirishni aytadi.
-// Botga /start yozish, shuningdek, bot foydalanuvchiga xabar yubora olishini ta'minlaydi.
+// /start — saytga qanday kirishni aytadi (botga /start yozish bot foydalanuvchiga xabar yubora olishini ham ta'minlaydi).
+// /login (yoki /start login) — Telegram'i yo'q qurilmadan saytga kirish uchun bir martalik kod beradi.
 package telegrambot
 
 import (
@@ -10,20 +10,22 @@ import (
 	"time"
 
 	"github.com/khasansayliev/watcher/internal/adapter/telegram"
+	"github.com/khasansayliev/watcher/internal/domain"
 )
 
-type Greeter interface {
+type Service interface {
 	Greet(ctx context.Context, chatID string) error
+	SendLoginCode(ctx context.Context, ident domain.Identity) error
 }
 
 type Bot struct {
-	client  *telegram.Client
-	greeter Greeter
-	log     *slog.Logger
+	client *telegram.Client
+	svc    Service
+	log    *slog.Logger
 }
 
-func New(c *telegram.Client, g Greeter, log *slog.Logger) *Bot {
-	return &Bot{client: c, greeter: g, log: log}
+func New(c *telegram.Client, svc Service, log *slog.Logger) *Bot {
+	return &Bot{client: c, svc: svc, log: log}
 }
 
 // Run long polling sikli. Bot uchun webhook o'rnatilmagan bo'lishi kerak.
@@ -57,15 +59,26 @@ func (b *Bot) Run(ctx context.Context) {
 }
 
 func (b *Bot) handle(ctx context.Context, u telegram.Update) {
-	if u.ChatID == "" {
+	if u.ChatID == "" || u.FromID == 0 {
 		return
 	}
-	cmd, _, _ := strings.Cut(strings.TrimSpace(u.Text), " ")
-	if cmd != "/start" {
-		return
+	cmd, arg := parseCommand(u.Text)
+	switch {
+	case cmd == "/login", cmd == "/start" && arg == "login": // t.me/<bot>?start=login — saytdagi tugma
+		ident := domain.Identity{TelegramID: u.FromID, FirstName: u.FirstName, LastName: u.LastName, Username: u.Username}
+		if err := b.svc.SendLoginCode(ctx, ident); err != nil {
+			b.log.Warn("telegram /login", "chat", u.ChatID, "err", err)
+		}
+	case cmd == "/start":
+		if err := b.svc.Greet(ctx, u.ChatID); err != nil {
+			b.log.Info("telegram /start", "chat", u.ChatID, "err", err)
+		}
 	}
-	err := b.greeter.Greet(ctx, u.ChatID)
-	if err != nil {
-		b.log.Info("telegram /start", "chat", u.ChatID, "err", err)
-	}
+}
+
+// parseCommand "/login@bot arg" ni ("/login", "arg") ga ajratadi.
+func parseCommand(text string) (cmd, arg string) {
+	cmd, arg, _ = strings.Cut(strings.TrimSpace(text), " ")
+	cmd, _, _ = strings.Cut(cmd, "@")
+	return strings.ToLower(cmd), strings.TrimSpace(arg)
 }

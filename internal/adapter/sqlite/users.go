@@ -39,7 +39,8 @@ func (r *Users) UpsertByIdentity(ctx context.Context, id domain.Identity, now ti
 		VALUES (?1, ?2, ?3, ?4, ?5, ?5)
 		ON CONFLICT (telegram_id) DO UPDATE
 		   SET username = excluded.username, name = excluded.name,
-		       photo_url = excluded.photo_url, last_login_at = excluded.last_login_at
+		       photo_url = CASE WHEN excluded.photo_url <> '' THEN excluded.photo_url ELSE users.photo_url END,
+		       last_login_at = excluded.last_login_at
 		RETURNING `+userCols,
 		id.TelegramID, id.Username, id.FullName(), id.PhotoURL, now.UnixMilli()))
 }

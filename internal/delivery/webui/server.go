@@ -21,6 +21,7 @@ var templatesFS embed.FS
 
 type AuthUseCase interface {
 	Login(ctx context.Context, fields map[string]string) (token string, user domain.User, expires time.Time, err error)
+	LoginWithCode(ctx context.Context, code, clientKey string) (token string, user domain.User, expires time.Time, err error)
 	Authenticate(ctx context.Context, token string) (domain.User, error)
 	Logout(ctx context.Context, token string) error
 }
@@ -93,6 +94,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
 	mux.HandleFunc("GET /login", s.loginPage)
 	mux.HandleFunc("GET "+callbackPath, s.telegramCallback)
+	mux.HandleFunc("POST /login/code", s.codeLogin)
 	mux.HandleFunc("POST /logout", s.logout)
 
 	// faqat kirganlar uchun

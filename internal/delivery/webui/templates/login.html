@@ -23,6 +23,21 @@
   </div>
   <p class="hint">Telegram oynasida tasdiqlang va bot sizga xabar yuborishiga ruxsat bering —
     bo'sh joy haqidagi bildirishnomalar shu bot orqali keladi.</p>
+
+  {{if .BotUsername}}
+  <div class="or">yoki kod bilan</div>
+  <h2 style="font-size:16px;margin-bottom:6px">Bu qurilmada Telegram yo'qmi?</h2>
+  <ol class="steps">
+    <li>Telegram o'rnatilgan boshqa qurilmada (masalan, telefon) <a href="https://t.me/{{.BotUsername}}?start=login" rel="noopener">@{{.BotUsername}}</a>
+      botini oching va <b>Start</b> ni bosing yoki <code>/login</code> deb yozing.</li>
+    <li>Bot yuborgan kodni shu yerga kiriting (5 daqiqa amal qiladi).</li>
+  </ol>
+  <form method="post" action="/login/code" class="codeform">
+    <input name="code" type="text" placeholder="ABCD-EFGH" maxlength="12" required
+      autocomplete="one-time-code" autocapitalize="characters" autocorrect="off" spellcheck="false" aria-label="Kirish kodi">
+    <button type="submit">Kirish</button>
+  </form>
+  {{end}}
   <p class="hint" style="margin-top:24px">Biletni sotib olish rasmiy saytda amalga oshiriladi.</p>
 </div>
 </body>
